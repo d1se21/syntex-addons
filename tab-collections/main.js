@@ -1,8 +1,9 @@
 // Tab collections, like tab groups in Chrome or Edge. A collection is a run of tabs side by side with a colour and a
 // name: its chip stands before its first tab (a click folds it, a right click opens its editor, the cross closes
-// it), and a line of its colour runs under its tabs. A dragged tab held for a moment over another tab joins that
-// one's collection, or makes a new collection with it; a tab dragged out of the run leaves it, a tab dropped inside
-// the run joins it. The collections are kept with the add-on's data, by tab id.
+// it), and a line of its colour runs under its tabs; the right-click menu of a tab of it folds or closes it too.
+// A dragged tab held for a moment over another tab joins that one's collection, or makes a new collection with it;
+// a tab dragged out of the run leaves it, a tab dropped inside the run joins it. The collections are kept with the
+// add-on's data, by tab id.
 
 const COLORS = [
   { id: 'grey', value: '#a3a9b3', ru: 'Серый', en: 'Grey' },
@@ -328,6 +329,7 @@ export default {
         })
       }
       if (own) {
+        items.push({ label: own.folded ? t().unfold : t().fold, separatorBefore: true, action: () => (own.folded ? setFolded(own, false) : fold(own)) })
         items.push({
           label: t().leave,
           action: () => {
@@ -339,6 +341,7 @@ export default {
             update()
           }
         })
+        items.push({ label: t().close, danger: true, action: () => closeCollection(own) })
       }
       return items
     })
