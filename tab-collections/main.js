@@ -1,6 +1,8 @@
-// Tab collections: tabs gathered into coloured collections, like tab groups in a browser. A collection has a name
-// and a colour, shown on its tabs (a line under them, its name before the first one); folded, only its name is left.
-// Everything is in the right-click menu of a tab. The collections are kept with the add-on's data, by tab id.
+// Tab collections, like tab groups in Chrome or Edge. A collection is a run of tabs side by side with a colour and a
+// name: its chip stands before its first tab (a click folds it, a right click opens its editor, the cross closes
+// it), and a line of its colour runs under its tabs. A dragged tab held for a moment over another tab joins that
+// one's collection, or makes a new collection with it; a tab dragged out of the run leaves it, a tab dropped inside
+// the run joins it. The collections are kept with the add-on's data, by tab id.
 
 const COLORS = [
   { id: 'grey', value: '#a3a9b3', ru: 'Серый', en: 'Grey' },
@@ -16,60 +18,82 @@ const COLORS = [
 
 const TEXT = {
   ru: {
-    toNew: 'Добавить в новую коллекцию',
-    toExisting: 'Добавить в коллекцию',
-    newName: 'Название коллекции',
-    defaultName: (n) => `Коллекция ${n}`,
-    rename: 'Переименовать коллекцию…',
-    color: 'Цвет',
+    toNew: 'Добавить вкладку в новую коллекцию',
+    toExisting: 'Добавить вкладку в коллекцию',
+    unnamed: 'Без названия',
+    leave: 'Убрать из коллекции',
+    namePlaceholder: 'Назовите эту коллекцию',
     newTab: 'Новая вкладка в коллекции',
-    fold: 'Свернуть коллекцию',
-    unfold: 'Развернуть коллекцию',
-    leave: 'Убрать вкладку из коллекции',
+    fold: 'Свернуть',
+    unfold: 'Развернуть',
     ungroup: 'Разгруппировать',
-    closeAll: 'Закрыть вкладки коллекции',
-    closeTitle: 'Закрыть вкладки?',
-    closeText: (name, n) => `Все вкладки коллекции «${name}» (${n}) закроются, а сама коллекция исчезнет.`,
-    closeOk: 'Закрыть'
+    close: 'Закрыть коллекцию'
   },
   en: {
-    toNew: 'Add to a new collection',
-    toExisting: 'Add to a collection',
-    newName: 'Name of the collection',
-    defaultName: (n) => `Collection ${n}`,
-    rename: 'Rename the collection…',
-    color: 'Colour',
+    toNew: 'Add the tab to a new collection',
+    toExisting: 'Add the tab to a collection',
+    unnamed: 'Unnamed',
+    leave: 'Remove from the collection',
+    namePlaceholder: 'Name this collection',
     newTab: 'New tab in the collection',
-    fold: 'Fold the collection',
-    unfold: 'Unfold the collection',
-    leave: 'Take the tab out of the collection',
+    fold: 'Fold',
+    unfold: 'Unfold',
     ungroup: 'Ungroup',
-    closeAll: 'Close the tabs of the collection',
-    closeTitle: 'Close the tabs?',
-    closeText: (name, n) => `All the tabs of “${name}” (${n}) will close, and the collection goes away.`,
-    closeOk: 'Close'
+    close: 'Close the collection'
   }
+}
+
+const el = (tag, props = {}, children = []) => {
+  const node = Object.assign(document.createElement(tag), props)
+  for (const child of children) node.append(child)
+  return node
 }
 
 export default {
   onload(api) {
     const t = () => TEXT[api.language()] ?? TEXT.en
     /** { collections: [{ id, name, color, folded, tabs: [tab id, ...] }] } */
-    let state = api.data.get({ collections: [] })
+    const state = api.data.get({ collections: [] })
     const save = () => api.data.set(state)
     const colorOf = (c) => COLORS.find((x) => x.id === c.color)?.value ?? COLORS[0].value
     const collectionOf = (tabId) => state.collections.find((c) => c.tabs.includes(tabId))
+    const nextColor = () => {
+      const used = new Set(state.collections.map((c) => c.color))
+      return (COLORS.find((x) => !used.has(x.id)) ?? COLORS[state.collections.length % COLORS.length]).id
+    }
+    /** The tabs of a collection, in the order of their strip. */
+    const tabsOf = (c, tabs = api.tabs.list()) =>
+      tabs.filter((x) => c.tabs.includes(x.id)).sort((a, b) => (a.window === b.window ? a.index - b.index : a.window < b.window ? -1 : 1))
+    const takeOut = (tabId) => {
+      for (const c of state.collections) c.tabs = c.tabs.filter((id) => id !== tabId)
+    }
 
-    // A tab that is replaced by another one in its place (a note opened in an empty tab: Syntex puts the note's tab
+    // tabs held over a collection while being dragged: once dropped, they are put next to it wherever they fell
+    const joining = new Set()
+
+    // A tab replaced by another one in its very place (a note opened in an empty tab: Syntex puts the note's tab
     // there, then closes the empty one) hands its collection over to the new tab. So each tab is remembered with
     // where it was last and when it first appeared.
     let before = new Map(api.tabs.list().map((tab) => [tab.id, tab]))
     const firstSeen = new Map()
     const HEIR_MS = 2000
 
-    /** Bring the collections in line with the tabs there are, and draw them on the tabs. */
+    let updating = false
+    /** Bring the collections in line with the tabs there are and with their order, then draw them. */
     const update = () => {
-      const tabs = api.tabs.list()
+      // (moving a tab here tells of a change again: that one is part of this update)
+      if (updating) return
+      updating = true
+      try {
+        reconcile()
+        draw()
+      } finally {
+        updating = false
+      }
+    }
+
+    const reconcile = () => {
+      let tabs = api.tabs.list()
       const now = new Map(tabs.map((tab) => [tab.id, tab]))
       const at = Date.now()
       for (const tab of tabs) if (!firstSeen.has(tab.id)) firstSeen.set(tab.id, at)
@@ -78,158 +102,280 @@ export default {
           .filter((tab) => tab.window === was.window && Math.abs(tab.index - was.index) <= 1 && at - firstSeen.get(tab.id) < HEIR_MS && !collectionOf(tab.id))
           .sort((a, b) => Math.abs(a.index - was.index) - Math.abs(b.index - was.index))[0]
       let changed = false
+
+      // closed tabs leave, or hand their place over
       for (const c of state.collections) {
         c.tabs = c.tabs.flatMap((id) => {
           if (now.has(id)) return [id]
           changed = true
+          joining.delete(id)
           const was = before.get(id)
           const heir = was && heirOf(was)
           return heir ? [heir.id] : []
         })
-        // a tab brought to the front opens its folded collection, like a click on a group in a browser
+        // a tab brought to the front opens its folded collection
         if (c.folded && c.tabs.some((id) => now.get(id)?.active && !before.get(id)?.active)) {
           c.folded = false
           changed = true
         }
       }
-      const kept = state.collections.filter((c) => c.tabs.length)
-      if (kept.length !== state.collections.length) changed = true
-      state.collections = kept
-      if (changed) save()
-      before = now
-      for (const id of firstSeen.keys()) if (!now.has(id)) firstSeen.delete(id)
 
+      // tabs that were held over a collection go next to its other tabs
+      for (const id of [...joining]) {
+        joining.delete(id)
+        const c = collectionOf(id)
+        const others = c ? tabsOf(c, tabs).filter((x) => x.id !== id) : []
+        if (others.length) api.tabs.move(id, others[others.length - 1].id)
+      }
+      tabs = api.tabs.list()
+
+      // the order rules: a tab dragged out of the run of its collection leaves it, a tab dropped inside a run joins it
+      for (const c of state.collections) {
+        const run = tabsOf(c, tabs)
+        if (run.length < 2) continue
+        const window = run[0].window
+        const strip = tabs.filter((x) => x.window === window).sort((a, b) => a.index - b.index)
+        const touches = (x) => strip.slice(Math.max(0, x.index - 1), x.index + 2).some((y) => y.id !== x.id && c.tabs.includes(y.id))
+        let strays = run.filter((x) => x.window !== window || !touches(x))
+        // none touches another (two tabs, one dragged away): the one that went the farthest is the one that left
+        // (the other may have shifted by one, into the place the dragged one left)
+        if (strays.length === run.length) {
+          const shift = (x) => (before.get(x.id)?.window !== x.window ? Infinity : Math.abs((before.get(x.id)?.index ?? x.index) - x.index))
+          const far = Math.max(...strays.map(shift))
+          const farthest = strays.filter((x) => shift(x) === far)
+          strays = far > 0 && farthest.length === 1 ? farthest : []
+        }
+        if (strays.length && strays.length < run.length) {
+          c.tabs = c.tabs.filter((id) => !strays.some((s) => s.id === id))
+          changed = true
+        }
+        const positions = tabsOf(c, tabs).filter((x) => x.window === window).map((x) => x.index)
+        for (const x of strip.slice(Math.min(...positions), Math.max(...positions) + 1)) {
+          if (!collectionOf(x.id)) {
+            c.tabs.push(x.id)
+            changed = true
+          }
+        }
+      }
+
+      const kept = state.collections.filter((c) => c.tabs.length)
+      if (kept.length !== state.collections.length) {
+        state.collections = kept
+        changed = true
+      }
+      if (changed) save()
+      before = new Map(api.tabs.list().map((tab) => [tab.id, tab]))
+      for (const id of firstSeen.keys()) if (!now.has(id)) firstSeen.delete(id)
+    }
+
+    const draw = () => {
+      const tabs = api.tabs.list()
       for (const tab of tabs) {
         const c = collectionOf(tab.id)
         if (!c) {
           api.tabs.decorate(tab.id, null)
           continue
         }
-        // the first tab of the collection in its window carries the name
-        const first = tabs.filter((x) => c.tabs.includes(x.id) && x.window === tab.window).sort((a, b) => a.index - b.index)[0]
-        const isFirst = first?.id === tab.id
-        api.tabs.decorate(tab.id, {
-          color: colorOf(c),
-          label: isFirst ? c.name : undefined,
-          labelOnly: c.folded && isFirst,
-          hidden: c.folded && !isFirst
-        })
+        const isFirst = tabsOf(c, tabs)[0]?.id === tab.id
+        const chip = isFirst
+          ? {
+              label: c.name,
+              color: colorOf(c),
+              folded: c.folded,
+              onClick: () => (c.folded ? setFolded(c, false) : fold(c)),
+              onMenu: (x, y) => editor(c, x, y),
+              onClose: () => closeCollection(c)
+            }
+          : undefined
+        api.tabs.decorate(tab.id, { color: colorOf(c), chip, hidden: c.folded && !isFirst })
       }
     }
 
-    /** The tabs of a collection stay side by side: a tab that joins goes after the last of them. */
-    const join = (c, tabId) => {
-      const last = api.tabs
-        .list()
-        .filter((x) => c.tabs.includes(x.id))
-        .sort((a, b) => a.index - b.index)
-        .pop()
-      c.tabs.push(tabId)
-      if (last && last.id !== tabId) api.tabs.move(tabId, last.id)
-    }
-
-    const leave = (tabId) => {
-      for (const c of state.collections) c.tabs = c.tabs.filter((id) => id !== tabId)
-    }
-
-    const create = async (tab) => {
-      const name = await api.ui.prompt(t().newName, t().defaultName(state.collections.length + 1))
-      if (name === null) return
-      const used = new Set(state.collections.map((c) => c.color))
-      const color = (COLORS.find((x) => !used.has(x.id)) ?? COLORS[state.collections.length % COLORS.length]).id
-      leave(tab.id)
-      state.collections.push({ id: `c${Date.now()}`, name: name.trim() || t().defaultName(state.collections.length + 1), color, folded: false, tabs: [tab.id] })
+    const setFolded = (c, folded) => {
+      c.folded = folded
       save()
       update()
     }
 
-    /** Folded, a collection shows only its name; a tab of it that is in front gives way to the nearest other tab. */
+    /** Folded, a collection shows only its chip; a tab of it that is in front gives way to the nearest other tab. */
     const fold = (c) => {
       const tabs = api.tabs.list()
       for (const front of tabs.filter((x) => x.active && c.tabs.includes(x.id))) {
         const others = tabs.filter((x) => x.window === front.window && !c.tabs.includes(x.id))
-        // nowhere else to go in that window: the collection stays open
-        if (!others.length) return
-        others.sort((a, b) => Math.abs(a.index - front.index) - Math.abs(b.index - front.index))
-        api.tabs.activate(others[0].id)
+        if (others.length) {
+          others.sort((a, b) => Math.abs(a.index - front.index) - Math.abs(b.index - front.index))
+          api.tabs.activate(others[0].id)
+        } else {
+          // nowhere else to go in that window: a new empty tab after the collection, like a browser does
+          api.tabs.open({ after: tabsOf(c, tabs).pop()?.id })
+        }
       }
-      c.folded = true
+      setFolded(c, true)
+    }
+
+    const closeCollection = (c) => {
+      const ids = [...c.tabs]
+      state.collections = state.collections.filter((x) => x !== c)
       save()
+      for (const id of ids) api.tabs.close(id)
       update()
     }
 
-    const changeAndDraw = (fn) => () => {
-      fn()
-      save()
-      update()
+    /** A tab into a collection, right after its other tabs. */
+    const join = (c, tabId) => {
+      takeOut(tabId)
+      const last = tabsOf(c).pop()
+      c.tabs.push(tabId)
+      if (last && last.id !== tabId) api.tabs.move(tabId, last.id)
     }
 
-    api.menus.tab((tab) => {
-      const c = collectionOf(tab.id)
-      const lang = api.language()
-      if (!c) {
-        const items = [{ label: t().toNew, action: () => void create(tab) }]
-        if (state.collections.length) {
-          items.push({
-            label: t().toExisting,
-            children: state.collections.map((other) => ({
-              label: other.name,
-              swatch: colorOf(other),
-              action: changeAndDraw(() => join(other, tab.id))
-            }))
+    /** A new collection, unnamed, with its editor open at once to name it, like a browser. */
+    const create = (tabId) => {
+      const c = { id: `c${Date.now()}`, name: '', color: nextColor(), folded: false, tabs: [] }
+      state.collections.push(c)
+      join(c, tabId)
+      save()
+      update()
+      requestAnimationFrame(() => {
+        const r = api.tabs.rectOf(tabId)
+        if (r) editor(c, r.left, r.bottom + 4)
+      })
+    }
+
+    /** The editor of a collection, like the one of a tab group in a browser: its name, its colour and what to do. */
+    const editor = (c, x, y) => {
+      api.ui.popup({
+        x,
+        y,
+        mount: (box, close) => {
+          const name = el('input', { className: 'tc-name', value: c.name, placeholder: t().namePlaceholder, spellcheck: false })
+          name.oninput = () => {
+            c.name = name.value
+            save()
+            draw()
+          }
+          name.onkeydown = (e) => e.key === 'Enter' && close()
+          const colors = el(
+            'div',
+            { className: 'tc-colors' },
+            COLORS.map((col) => {
+              const dot = el('button', { className: 'tc-color' + (col.id === c.color ? ' on' : ''), title: col[api.language()] ?? col.en })
+              dot.style.setProperty('--c', col.value)
+              dot.onclick = () => {
+                c.color = col.id
+                save()
+                draw()
+                for (const d of colors.children) d.classList.toggle('on', d === dot)
+              }
+              return dot
+            })
+          )
+          const item = (label, action, danger) => {
+            const b = el('button', { className: 'tc-item' + (danger ? ' danger' : ''), textContent: label })
+            b.onclick = () => {
+              close()
+              action()
+            }
+            return b
+          }
+          box.append(
+            name,
+            colors,
+            el('div', { className: 'tc-sep' }),
+            item(t().newTab, () => {
+              const id = api.tabs.open({ after: tabsOf(c).pop()?.id })
+              if (!id) return
+              takeOut(id)
+              c.tabs.push(id)
+              c.folded = false
+              save()
+              update()
+            }),
+            item(c.folded ? t().unfold : t().fold, () => (c.folded ? setFolded(c, false) : fold(c))),
+            item(t().ungroup, () => {
+              state.collections = state.collections.filter((x) => x !== c)
+              save()
+              update()
+            }),
+            el('div', { className: 'tc-sep' }),
+            item(t().close, () => closeCollection(c), true)
+          )
+          requestAnimationFrame(() => {
+            name.focus()
+            name.select()
           })
         }
-        return items
-      }
-      return [
-        {
-          label: t().rename,
-          action: async () => {
-            const name = await api.ui.prompt(t().newName, c.name)
-            if (name !== null && name.trim()) changeAndDraw(() => (c.name = name.trim()))()
-          }
-        },
-        {
-          label: t().color,
-          children: COLORS.map((x) => ({
-            label: x[lang] ?? x.en,
-            swatch: x.value,
-            hint: x.id === c.color ? '✓' : undefined,
-            action: changeAndDraw(() => (c.color = x.id))
+      })
+    }
+
+    // the right-click menu of a tab: into a new collection, into one there is, or out of its own
+    api.menus.tab((tab) => {
+      const own = collectionOf(tab.id)
+      const others = state.collections.filter((c) => c !== own)
+      const items = [{ label: t().toNew, action: () => create(tab.id) }]
+      if (others.length) {
+        items.push({
+          label: t().toExisting,
+          children: others.map((c) => ({
+            label: c.name || t().unnamed,
+            swatch: colorOf(c),
+            action: () => {
+              join(c, tab.id)
+              save()
+              update()
+            }
           }))
-        },
-        {
-          label: t().newTab,
+        })
+      }
+      if (own) {
+        items.push({
+          label: t().leave,
           action: () => {
-            const last = api.tabs.list().filter((x) => c.tabs.includes(x.id)).sort((a, b) => a.index - b.index).pop()
-            const id = api.tabs.open({ after: last?.id ?? tab.id })
-            if (id)
-              changeAndDraw(() => {
-                c.tabs.push(id)
-                c.folded = false
-              })()
-          }
-        },
-        { label: c.folded ? t().unfold : t().fold, action: () => (c.folded ? changeAndDraw(() => (c.folded = false))() : fold(c)) },
-        { label: t().leave, separatorBefore: true, action: changeAndDraw(() => leave(tab.id)) },
-        { label: t().ungroup, action: changeAndDraw(() => (state.collections = state.collections.filter((x) => x !== c))) },
-        {
-          label: t().closeAll,
-          danger: true,
-          separatorBefore: true,
-          action: async () => {
-            if (!(await api.ui.confirm(t().closeTitle, t().closeText(c.name, c.tabs.length), t().closeOk))) return
-            const ids = [...c.tabs]
-            state.collections = state.collections.filter((x) => x !== c)
+            own.tabs = own.tabs.filter((id) => id !== tab.id)
+            // out of the run: the tab goes after the collection
+            const last = tabsOf(own).pop()
+            if (last) api.tabs.move(tab.id, last.id)
             save()
-            for (const id of ids) api.tabs.close(id)
             update()
           }
-        }
-      ]
+        })
+      }
+      return items
     })
 
-    api.tabs.onChange(update)
+    // a dragged tab held over another one: into that one's collection, or a new collection of the two
+    api.tabs.onHold((dragged, target) => {
+      const there = collectionOf(target)
+      if (there?.tabs.includes(dragged)) return
+      takeOut(dragged)
+      if (there) there.tabs.push(dragged)
+      else state.collections.push({ id: `c${Date.now()}`, name: '', color: nextColor(), folded: false, tabs: [target, dragged] })
+      joining.add(dragged)
+      save()
+      draw()
+    })
+
+    // a move of a tab tells of several changes in a row (the tab leaves its place, then comes to the new one): the
+    // collections follow the tabs once those have settled, not the step in between, where the tab seems closed
+    let pending = null
+    api.tabs.onChange(() => {
+      if (pending === null) pending = setTimeout(() => {
+        pending = null
+        update()
+      }, 0)
+    })
+    api.onDispose(() => pending !== null && clearTimeout(pending))
+    api.ui.addStyle(`
+      .tc-name { width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--outline); background: var(--bg-app); color: var(--text); font-size: 13px; outline: none; }
+      .tc-name:focus { border-color: var(--accent); }
+      .tc-colors { display: flex; gap: 8px; padding: 10px 4px 6px; }
+      .tc-color { width: 18px; height: 18px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15); }
+      .tc-color.on { box-shadow: 0 0 0 2px var(--float-bg), 0 0 0 4px var(--c); }
+      .tc-sep { height: 1px; margin: 6px 2px; background: var(--border); }
+      .tc-item { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text-2); }
+      .tc-item:hover { background: var(--bg-hover); color: var(--text); }
+      .tc-item.danger { color: var(--danger-text); }
+    `)
     update()
   }
 }
