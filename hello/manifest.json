@@ -1,0 +1,8 @@
+{
+  "id": "hello",
+  "name": { "ru": "Привет", "en": "Hello" },
+  "description": { "ru": "Пример аддона: команда, строка под заметкой и событие сохранения.", "en": "Example add-on: a command, a status text and the save event." },
+  "version": "1.0.0",
+  "author": "Syntex",
+  "minApi": 4
+}
