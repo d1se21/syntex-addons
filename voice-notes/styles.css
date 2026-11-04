@@ -1,0 +1,18 @@
+/* the recording bar, bottom centre */
+.voice-bar {
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px 9px 16px;
+  background: var(--float-bg); border: 1px solid var(--border-2); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); animation: pop-in 0.18s ease-out;
+}
+.voice-dot { width: 10px; height: 10px; border-radius: 50%; background: #e5484d; animation: voice-pulse 1.1s ease-in-out infinite; }
+@keyframes voice-pulse { 50% { opacity: 0.35; transform: scale(0.8); } }
+.voice-time { min-width: 38px; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--text); }
+.voice-bar .btn { height: 30px; padding: 0 12px; }
+.voice-stop { background: var(--accent); color: var(--bg-app); border-color: var(--accent); }
+.voice-stop:hover { background: var(--accent-hover); }
+
+/* the choice of the microphone in the settings */
+.mic-picker { display: flex; align-items: center; gap: 8px; }
+.mic-picker .select select { min-width: 200px; max-width: 260px; }
+.mic-picker .btn { height: 34px; }
+.mic-meter { width: 70px; height: 6px; border-radius: 3px; background: var(--bg-hover); overflow: hidden; }
+.mic-meter i { display: block; height: 100%; background: var(--accent); transition: width 0.06s linear; }
