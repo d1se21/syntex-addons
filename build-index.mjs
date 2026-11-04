@@ -19,6 +19,8 @@ for (const dir of readdirSync(root, { withFileTypes: true })) {
     ...(m.description ? { description: m.description } : {}),
     version: m.version,
     ...(m.author ? { author: m.author } : {}),
+    // an older Syntex shows that the add-on needs a newer one, instead of installing what it cannot run
+    ...(m.minApi ? { minApi: m.minApi } : {}),
     path: dir.name,
     files: FILES.filter((f) => existsSync(join(folder, f)))
   })
