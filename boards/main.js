@@ -404,8 +404,19 @@ export default {
         const r = canvas.getBoundingClientRect()
         const center = toWorld(r.left + r.width / 2, r.top + r.height / 2)
         // a new card lands where it was asked for, or in the middle of the view, a little off the one before it
-        const n = board.cards.length % 6
-        const card = { id: uid(), x: Math.round((at?.x ?? center.x - s.w / 2 + n * 16) - (at ? s.w / 2 : 0)), y: Math.round((at?.y ?? center.y - s.h / 2 + n * 16) - (at ? s.h / 2 : 0)), ...props }
+        let x = Math.round(at ? at.x - s.w / 2 : center.x - s.w / 2)
+        let y = Math.round(at ? at.y - s.h / 2 : center.y - s.h / 2)
+        if (!at) {
+          // the middle of the view, or the nearest free place to it (a row to the right, then the next row down)
+          const free = (px, py) => !board.cards.some((c) => px < c.x + sizeOf(c).w + 16 && px + s.w + 16 > c.x && py < c.y + sizeOf(c).h + 16 && py + s.h + 16 > c.y)
+          const x0 = x
+          const y0 = y
+          for (let i = 1; i < 60 && !free(x, y); i++) {
+            x = x0 + (i % 4) * (s.w + 24)
+            y = y0 + Math.floor(i / 4) * (s.h + 24)
+          }
+        }
+        const card = { id: uid(), x, y, ...props }
         board.cards.push(card)
         const node = makeCard(card)
         select_({ kind: 'card', id: card.id })
@@ -538,6 +549,8 @@ export default {
         const raw = await api.ui.prompt(t().namePrompt, '')
         const name = raw?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
         if (!name) return null
+        // (writing a note does not make its folder: the first board makes "Boards")
+        if (!(await api.vault.exists(FOLDER))) await window.syntex.fs.createFolder('', FOLDER)
         const taken = new Set(boardPaths())
         let next = `${FOLDER}/${name}.md`
         for (let i = 2; taken.has(next); i++) next = `${FOLDER}/${name} ${i}.md`

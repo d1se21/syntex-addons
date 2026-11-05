@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: карточки с текстом и карточки-заметки, стрелки между ними, цвета, перемещение и масштаб. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: text cards and cards that are notes, arrows between them, colours, panning and zoom. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 6,
       "path": "boards",
@@ -19,31 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "a103802be39509502f9e18fee2a4c90aef5e9fce0036b04fa3f275c0078c2b74",
-        "main.js": "43994c2ef222ca72e247763e7b1d5fc3bf5a219d13a625bb881933a36cbdb62d"
-      }
-    },
-    {
-      "id": "local-graph",
-      "name": {
-        "ru": "Мини-граф заметки",
-        "en": "Mini graph of the note"
-      },
-      "description": {
-        "ru": "Квадратное окошко в углу заметки с графом её собственных связей: куда она ссылается и кто ссылается на неё. Клик по точке открывает заметку. Ctrl+Alt+G — показать или скрыть.",
-        "en": "A small square window in the corner of the note with the graph of its own links: what it links to and what links to it. A click on a dot opens that note. Ctrl+Alt+G shows or hides it."
-      },
-      "version": "1.0.0",
-      "author": "Syntex",
-      "minApi": 6,
-      "path": "local-graph",
-      "files": [
-        "manifest.json",
-        "main.js"
-      ],
-      "hashes": {
-        "manifest.json": "8c7d46cb8aae593d82252def84e9de1b8d33d7ae1d6ccf468037a99db53b9ca3",
-        "main.js": "577942fbe6d6abbd15a297a3f50dab88190a2fb1461abb9277b4f8c0babc204c"
+        "manifest.json": "6176f0402e63ce3f3853248464a05d4520a099d94b2cfcb80fdb1b025a67e970",
+        "main.js": "3adf62aa788d9d26a9ae4b4da84a0bac531d198ade27fe149b8ac625aa177609"
       }
     },
     {
