@@ -2,6 +2,7 @@
 // Each folder with a manifest.json and a main.js is an add-on; run `node build-index.mjs` after adding or changing one.
 import { readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(fileURLToPath(import.meta.url))
@@ -22,7 +23,9 @@ for (const dir of readdirSync(root, { withFileTypes: true })) {
     // an older Syntex shows that the add-on needs a newer one, instead of installing what it cannot run
     ...(m.minApi ? { minApi: m.minApi } : {}),
     path: dir.name,
-    files: FILES.filter((f) => existsSync(join(folder, f)))
+    files: FILES.filter((f) => existsSync(join(folder, f))),
+    // what Syntex checks a download against (the text as it is read: utf-8)
+    hashes: Object.fromEntries(FILES.filter((f) => existsSync(join(folder, f))).map((f) => [f, createHash('sha256').update(readFileSync(join(folder, f), 'utf8').replace(/\r\n/g, '\n'), 'utf8').digest('hex')]))
   })
 }
 addons.sort((a, b) => a.id.localeCompare(b.id))

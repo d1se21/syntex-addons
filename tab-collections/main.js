@@ -468,9 +468,34 @@ export default {
     })
 
     // a dragged tab held over another one: into that one's collection, or a new collection of the two
+    // (the collections as they were before the hold: a drag that ends without a drop - Esc, or let go outside the
+    // window - gives them back, so holding a tab over another one changes nothing unless the tab is dropped)
+    let held = null
+    let dropped = false
+    const onDrop = () => (dropped = true)
+    const onDragEnd = () => {
+      if (held && !dropped) {
+        state.collections = held.snapshot
+        joining.delete(held.dragged)
+        save()
+        draw()
+      }
+      held = null
+      dropped = false
+    }
+    window.addEventListener('drop', onDrop, true)
+    window.addEventListener('dragend', onDragEnd, true)
+    api.onDispose(() => {
+      window.removeEventListener('drop', onDrop, true)
+      window.removeEventListener('dragend', onDragEnd, true)
+    })
     api.tabs.onHold((dragged, target) => {
       const there = collectionOf(target)
       if (there?.tabs.includes(dragged)) return
+      if (!held) {
+        held = { dragged, snapshot: JSON.parse(JSON.stringify(state.collections)) }
+        dropped = false
+      }
       takeOut(dragged)
       if (there) there.tabs.push(dragged)
       else state.collections.push({ id: `c${Date.now()}`, name: '', color: nextColor(), folded: false, tabs: [target, dragged] })
