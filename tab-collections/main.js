@@ -272,7 +272,8 @@ export default {
     const icon = (d) => {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
       svg.setAttribute('viewBox', '0 0 24 24')
-      svg.setAttribute('class', 'tc-icon')
+      // (the class icon of Syntex: its lines are as wide as those of every other icon)
+      svg.setAttribute('class', 'icon tc-icon')
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
       path.setAttribute('d', d)
       svg.append(path)
@@ -457,7 +458,7 @@ export default {
       .tc-row { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 220px; max-width: 320px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text-2); text-align: left; }
       .tc-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .tc-row:hover { background: var(--bg-hover); color: var(--text); }
-      .tc-icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--text-3); }
+      .tc-icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--text-3); }
     `)
     update()
   }
