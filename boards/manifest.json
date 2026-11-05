@@ -2,10 +2,10 @@
   "id": "boards",
   "name": { "ru": "Интерактивная доска", "en": "Interactive board" },
   "description": {
-    "ru": "Доска во вкладке: карточки с текстом и карточки-заметки, стрелки между ними, цвета, перемещение и масштаб. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
-    "en": "A board in a tab: text cards and cards that are notes, arrows between them, colours, panning and zoom. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
+    "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
+    "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "Syntex",
   "minApi": 6
 }

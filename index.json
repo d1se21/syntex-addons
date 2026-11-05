@@ -7,10 +7,10 @@
         "en": "Interactive board"
       },
       "description": {
-        "ru": "Доска во вкладке: карточки с текстом и карточки-заметки, стрелки между ними, цвета, перемещение и масштаб. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
-        "en": "A board in a tab: text cards and cards that are notes, arrows between them, colours, panning and zoom. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
+        "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
+        "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
       },
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "Syntex",
       "minApi": 6,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "6176f0402e63ce3f3853248464a05d4520a099d94b2cfcb80fdb1b025a67e970",
-        "main.js": "3adf62aa788d9d26a9ae4b4da84a0bac531d198ade27fe149b8ac625aa177609"
+        "manifest.json": "fbb99f2a42d800273f99a19e407706fe135797175dfbccd1c4e75d26c8f310a9",
+        "main.js": "810a6f84ac5b974ed4e1286ce0fbbf1a4fc34cb21af3f18989fd7699286bcd7a"
       }
     },
     {

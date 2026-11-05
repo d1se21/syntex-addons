@@ -1,58 +1,19 @@
-// Boards: an interactive board in a tab of its own. Cards with text, cards that are notes of the vault, arrows between
-// cards, colours; drag the background to move around, the wheel zooms. Each board is a note in the "Boards" folder
-// (a fenced block with its data), so it lives in the vault, is backed up and synced with it, and is never lost with
-// the add-on. The tab shows one board at a time; the list at the top switches between them.
+// Boards: an interactive board in a tab of its own. Cards of several kinds (text, sticky notes, notes of the vault with
+// a preview, pictures, links, check lists, shapes, frames), arrows with labels, selection by frame or by group, undo,
+// alignment, snapping, search, a minimap, and a right-click menu on everything. Each board is a note in the "Boards"
+// folder (a fenced block with its data), so it lives in the vault, is backed up and synced with it.
 
 const FOLDER = 'Boards'
 const FENCE = 'syntex-board'
-
-const TEXT = {
-  ru: {
-    title: 'Доски',
-    open: 'Открыть доски',
-    newBoard: 'Новая доска',
-    namePrompt: 'Название доски',
-    card: 'Карточка',
-    note: 'Заметка',
-    fit: 'Вписать',
-    pickNote: 'Найти заметку…',
-    nothing: 'Ничего не найдено',
-    empty: 'Досок пока нет',
-    emptyHint: 'Доска — это поле с карточками и стрелками. Создайте первую.',
-    emptyBoard: 'Двойной клик по пустому месту добавляет карточку. Кружок справа у карточки тянется к другой карточке: так появляется стрелка.',
-    addToBoard: 'Добавить на доску',
-    openNote: 'Открыть заметку',
-    broken: 'Данные доски повреждены, доска не изменяется: исправьте её заметку или создайте новую.',
-    placeholder: 'Текст карточки',
-    color: 'Цвет',
-    delete: 'Удалить (Delete)',
-    missing: 'Заметки нет'
-  },
-  en: {
-    title: 'Boards',
-    open: 'Open boards',
-    newBoard: 'New board',
-    namePrompt: 'Name of the board',
-    card: 'Card',
-    note: 'Note',
-    fit: 'Fit',
-    pickNote: 'Find a note…',
-    nothing: 'Nothing found',
-    empty: 'No boards yet',
-    emptyHint: 'A board is a field with cards and arrows. Make the first one.',
-    emptyBoard: 'A double click on an empty place adds a card. The dot at the right of a card is dragged to another card: that makes an arrow.',
-    addToBoard: 'Add to the board',
-    openNote: 'Open the note',
-    broken: 'The data of this board is damaged, so it is left alone: fix its note or make a new board.',
-    placeholder: 'Text of the card',
-    color: 'Colour',
-    delete: 'Delete (Delete)',
-    missing: 'No such note'
-  }
-}
-
-const COLORS = ['', '#8ab4f8', '#f28b82', '#fdd663', '#81c995', '#c58af9', '#fcad70']
+const CLIP = 'syntex-board:'
 const NS = 'http://www.w3.org/2000/svg'
+const GRID = 24
+
+const COLORS = ['', '#8ab4f8', '#f28b82', '#fdd663', '#81c995', '#c58af9', '#fcad70', '#78d9ec', '#ff8bcb']
+const STICKY = '#fdd663'
+const DEF = { text: [220, 110], sticky: [180, 180], note: [250, 108], image: [260, 180], link: [280, 70], frame: [560, 360], shape: [170, 110], todo: [230, 140] }
+const MIN = { text: [90, 50], sticky: [90, 90], note: [150, 52], image: [60, 40], link: [160, 52], frame: [160, 100], shape: [70, 50], todo: [130, 70] }
+const FONTS = [13, 15, 19, 26]
 
 const el = (tag, props = {}, children = []) => {
   const node = Object.assign(document.createElement(tag), props)
@@ -61,32 +22,61 @@ const el = (tag, props = {}, children = []) => {
 }
 const svgEl = (tag, attrs = {}) => {
   const node = document.createElementNS(NS, tag)
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v))
+  for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined) node.setAttribute(k, String(v))
   return node
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 const nameOf = (path) => path.split('/').pop().replace(/\.md$/i, '')
+const urlOf = (path) => 'syntex://vault/' + path.split('/').map(encodeURIComponent).join('/')
+const normUrl = (u) => (/^[a-z][a-z0-9+.-]*:/i.test(u) ? u : 'https://' + u)
+const hostOf = (u) => {
+  try {
+    return new URL(normUrl(u)).hostname.replace(/^www\./, '')
+  } catch {
+    return u
+  }
+}
+const IS_URL = /^(https?:\/\/|www\.)\S+$/i
 
-const emptyBoard = () => ({ v: 1, cards: [], links: [], view: { x: 0, y: 0, k: 1 } })
+const newBoard = () => ({ v: 2, cards: [], links: [], view: { x: 0, y: 0, k: 1 }, settings: { grid: 'dots', snapGrid: false, guides: true } })
+
+const sizeOf = (c) => ({ w: c.w ?? DEF[c.type][0], h: c.h ?? DEF[c.type][1] })
+const rectOf = (c) => ({ x: c.x, y: c.y, ...sizeOf(c) })
+const boundsOf = (cards) => {
+  const x0 = Math.min(...cards.map((c) => c.x))
+  const y0 = Math.min(...cards.map((c) => c.y))
+  const x1 = Math.max(...cards.map((c) => c.x + sizeOf(c).w))
+  const y1 = Math.max(...cards.map((c) => c.y + sizeOf(c).h))
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
 
 /** The text of a board's note. */
 function serialize(name, board) {
   return `# ${name}\n\n> Syntex board. It opens in the Boards tab; its data is the block below.\n\n\`\`\`${FENCE}\n${JSON.stringify(board, null, 1)}\n\`\`\`\n`
 }
 
-/** The board in a note's text, or null when there is none or it is damaged. */
+/** A board read from its data (boards of version 1 are brought up to date), or null when it is damaged. */
+function normalize(b) {
+  if (!b || !Array.isArray(b.cards) || !Array.isArray(b.links)) return null
+  const types = Object.keys(DEF)
+  const cards = []
+  for (const c of b.cards) {
+    if (!c || typeof c.id !== 'string' || !Number.isFinite(c.x) || !Number.isFinite(c.y)) continue
+    const type = types.includes(c.type) ? c.type : c.note ? 'note' : 'text'
+    cards.push({ ...c, type })
+  }
+  const ids = new Set(cards.map((c) => c.id))
+  const links = b.links.filter((l) => l && typeof l.id === 'string' && ids.has(l.from) && ids.has(l.to) && l.from !== l.to)
+  const view = b.view && Number.isFinite(b.view.k) && Number.isFinite(b.view.x) && Number.isFinite(b.view.y) ? b.view : { x: 0, y: 0, k: 1 }
+  return { v: 2, cards, links, view, settings: { ...newBoard().settings, ...(b.settings ?? {}) } }
+}
+
 function parse(text) {
   const m = new RegExp('```' + FENCE + '\\r?\\n([\\s\\S]*?)\\r?\\n```').exec(text)
   if (!m) return null
   try {
-    const b = JSON.parse(m[1])
-    if (!b || !Array.isArray(b.cards) || !Array.isArray(b.links)) return null
-    b.cards = b.cards.filter((c) => c && typeof c.id === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y))
-    const ids = new Set(b.cards.map((c) => c.id))
-    b.links = b.links.filter((l) => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to)
-    b.view = b.view && Number.isFinite(b.view.k) ? b.view : { x: 0, y: 0, k: 1 }
-    return b
+    return normalize(JSON.parse(m[1]))
   } catch {
     return null
   }
@@ -94,22 +84,20 @@ function parse(text) {
 
 export default {
   onload(api) {
-    const t = () => TEXT[api.language()] ?? TEXT.en
+    const tt = (ru, en) => (api.language() === 'ru' ? ru : en)
     const data = () => api.data.get({ last: '' })
-
     const boardPaths = () =>
       api.vault
         .list()
         .filter((p) => p.startsWith(FOLDER + '/') && p.split('/').length === 2)
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 
-    // a note sent to the board while the tab is not open: added once it is
+    // notes sent to the board while its tab is not open: added once it is
     let controller = null
     let pendingNotes = []
-
     const openBoards = () => api.views.open('main')
 
-    /* ---------------- the tab ---------------- */
+    /* ====================================================================== the tab */
 
     const mountBoards = (root) => {
       root.classList.add('bd-root')
@@ -119,36 +107,58 @@ export default {
       let dirty = false
       let saveTimer = null
       let lastWritten = ''
-      let selected = null // { kind: 'card' | 'link', id }
+      let sel = new Set()
+      let selLink = null
       let editing = null
-      let alive = true
+      let tool = 'select'
+      let spaceDown = false
+      let arrowMode = null
+      let mouse = { x: 0, y: 0 }
+      let pasteShift = 0
+      let hits = []
+      let hitAt = 0
+      let hist = { stack: [], i: -1 }
+      let miniFrame = 0
+      const cardEls = new Map()
+      const notes = new Map() // vault path -> { title, excerpt }
 
-      /* --- the frame --- */
+      /* ---------- the frame of the tab ---------- */
       const select = el('select', { className: 'bd-select' })
-      const btn = (label, onclick, cls = '') => el('button', { className: 'btn bd-btn ' + cls, textContent: label, onclick })
-      const swatches = el('div', { className: 'bd-swatches', title: t().color })
-      const zoomLabel = el('span', { className: 'bd-zoom' })
+      const btn = (label, onclick, title = '', cls = '') => el('button', { className: 'btn bd-btn ' + cls, textContent: label, onclick, title })
       const toolbar = el('div', { className: 'bd-toolbar' })
       const canvas = el('div', { className: 'bd-canvas', tabIndex: 0 })
       const world = el('div', { className: 'bd-world' })
+      const frameLayer = el('div', { className: 'bd-layer' })
+      const cardLayer = el('div', { className: 'bd-layer' })
       const links = svgEl('svg', { class: 'bd-links', width: 1, height: 1 })
       const defs = svgEl('defs')
-      const marker = svgEl('marker', { id: 'bd-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, orient: 'auto-start-reverse' })
+      const marker = svgEl('marker', { id: 'bd-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' })
       marker.append(svgEl('path', { d: 'M0 0L10 5L0 10z', class: 'bd-arrow-head' }))
       defs.append(marker)
-      links.append(defs)
       const linkLayer = svgEl('g')
       const temp = svgEl('line', { class: 'bd-temp', visibility: 'hidden' })
-      links.append(linkLayer, temp)
-      const cardLayer = el('div', { className: 'bd-cards' })
-      world.append(links, cardLayer)
+      links.append(defs, linkLayer, temp)
+      const guides = svgEl('svg', { class: 'bd-links bd-guides', width: 1, height: 1 })
+      world.append(frameLayer, links, cardLayer, guides)
+      const band = el('div', { className: 'bd-band', hidden: true })
       const hint = el('div', { className: 'bd-hint' })
-      canvas.append(world, hint)
+      const floatBar = el('div', { className: 'bd-float', hidden: true })
+      const zoomLabel = el('button', { className: 'bd-zoom-label', title: '100%' })
+      const zoomBox = el('div', { className: 'bd-zoombox' }, [
+        el('button', { textContent: '−', title: tt('Уменьшить', 'Zoom out'), onclick: () => zoomBy(1 / 1.25) }),
+        zoomLabel,
+        el('button', { textContent: '+', title: tt('Увеличить', 'Zoom in'), onclick: () => zoomBy(1.25) }),
+        el('button', { textContent: '⤢', title: tt('Вписать всё (Shift+1)', 'Fit everything (Shift+1)'), onclick: () => fit() })
+      ])
+      const mini = el('canvas', { className: 'bd-mini', width: 180, height: 120 })
+      const searchBox = el('div', { className: 'bd-search', hidden: true })
+      const searchInput = el('input', { placeholder: tt('Найти на доске…', 'Find on the board…'), spellcheck: false })
+      const searchCount = el('span', { className: 'bd-search-count' })
+      searchBox.append(searchInput, searchCount, el('button', { textContent: '×', onclick: () => closeSearch() }))
+      canvas.append(world, band, hint, floatBar, zoomBox, mini, searchBox)
       root.append(toolbar, canvas)
 
-      const cardEls = new Map()
-
-      /* --- saving --- */
+      /* ---------- saving and history ---------- */
       const write = async () => {
         clearTimeout(saveTimer)
         saveTimer = null
@@ -168,48 +178,104 @@ export default {
         clearTimeout(saveTimer)
         saveTimer = setTimeout(() => void write(), 500)
       }
+      const snapshot = () => JSON.stringify({ cards: board.cards, links: board.links })
+      /** A change of cards or arrows was made: it is kept for undo and saved. */
+      const commit = () => {
+        const s = snapshot()
+        if (s !== hist.stack[hist.i]) {
+          hist.stack.length = hist.i + 1
+          hist.stack.push(s)
+          if (hist.stack.length > 120) hist.stack.shift()
+          hist.i = hist.stack.length - 1
+        }
+        changed()
+        drawMini()
+        syncToolbar()
+      }
+      const restore = (i) => {
+        if (i < 0 || i >= hist.stack.length) return
+        hist.i = i
+        const s = JSON.parse(hist.stack[i])
+        board.cards = s.cards
+        board.links = s.links
+        sel = new Set([...sel].filter((id) => board.cards.some((c) => c.id === id)))
+        if (selLink && !board.links.some((l) => l.id === selLink)) selLink = null
+        rebuild()
+        changed()
+        syncToolbar()
+      }
+      const undo = () => restore(hist.i - 1)
+      const redo = () => restore(hist.i + 1)
 
-      /* --- the view --- */
+      /* ---------- the view ---------- */
       const applyView = () => {
         const { x, y, k } = board.view
         world.style.transform = `translate(${x}px, ${y}px) scale(${k})`
-        canvas.style.backgroundSize = `${24 * k}px ${24 * k}px`
+        canvas.dataset.grid = board.settings.grid
+        canvas.style.backgroundSize = `${GRID * k}px ${GRID * k}px`
         canvas.style.backgroundPosition = `${x}px ${y}px`
         zoomLabel.textContent = Math.round(k * 100) + '%'
+        placeFloat()
+        drawMini()
       }
-      const toWorld = (clientX, clientY) => {
+      const toWorld = (cx, cy) => {
         const r = canvas.getBoundingClientRect()
-        return { x: (clientX - r.left - board.view.x) / board.view.k, y: (clientY - r.top - board.view.y) / board.view.k }
+        return { x: (cx - r.left - board.view.x) / board.view.k, y: (cy - r.top - board.view.y) / board.view.k }
       }
-      const fit = () => {
-        if (!board.cards.length) {
-          board.view = { x: 0, y: 0, k: 1 }
-        } else {
-          const r = canvas.getBoundingClientRect()
-          const x0 = Math.min(...board.cards.map((c) => c.x))
-          const y0 = Math.min(...board.cards.map((c) => c.y))
-          const x1 = Math.max(...board.cards.map((c) => c.x + (c.w ?? 200)))
-          const y1 = Math.max(...board.cards.map((c) => c.y + (c.h ?? 110)))
-          const k = clamp(Math.min((r.width - 80) / Math.max(1, x1 - x0), (r.height - 80) / Math.max(1, y1 - y0)), 0.2, 1.5)
-          board.view = { k, x: (r.width - (x1 - x0) * k) / 2 - x0 * k, y: (r.height - (y1 - y0) * k) / 2 - y0 * k }
-        }
+      const toScreen = (wx, wy) => {
+        const r = canvas.getBoundingClientRect()
+        return { x: r.left + board.view.x + wx * board.view.k, y: r.top + board.view.y + wy * board.view.k }
+      }
+      const viewCenter = () => {
+        const r = canvas.getBoundingClientRect()
+        return toWorld(r.left + r.width / 2, r.top + r.height / 2)
+      }
+      const zoomAt = (px, py, k) => {
+        const v = board.view
+        const k1 = clamp(k, 0.1, 4)
+        v.x = px - ((px - v.x) * k1) / v.k
+        v.y = py - ((py - v.y) * k1) / v.k
+        v.k = k1
+        applyView()
+        changed()
+      }
+      const zoomBy = (f) => {
+        const r = canvas.getBoundingClientRect()
+        zoomAt(r.width / 2, r.height / 2, board.view.k * f)
+      }
+      const fitRect = (b, maxK = 1.5) => {
+        const r = canvas.getBoundingClientRect()
+        const k = clamp(Math.min((r.width - 120) / Math.max(1, b.w), (r.height - 120) / Math.max(1, b.h)), 0.1, maxK)
+        board.view = { k, x: (r.width - b.w * k) / 2 - b.x * k, y: (r.height - b.h * k) / 2 - b.y * k }
+        applyView()
+        changed()
+      }
+      const fit = () => (board.cards.length ? fitRect(boundsOf(board.cards)) : ((board.view = { x: 0, y: 0, k: 1 }), applyView(), changed()))
+      const fitSelection = () => (sel.size ? fitRect(boundsOf(board.cards.filter((c) => sel.has(c.id))), 2) : fit())
+      const centerOn = (c) => {
+        const r = canvas.getBoundingClientRect()
+        const s = sizeOf(c)
+        board.view.x = r.width / 2 - (c.x + s.w / 2) * board.view.k
+        board.view.y = r.height / 2 - (c.y + s.h / 2) * board.view.k
         applyView()
         changed()
       }
 
-      /* --- links (arrows) --- */
-      const sizeOf = (c) => ({ w: c.w ?? 200, h: c.h ?? (c.note ? 52 : 110) })
-      /** Where the line from the middle of card `a` towards card `b` leaves the edge of `a`. */
-      const edgePoint = (a, b) => {
-        const sa = sizeOf(a)
-        const sb = sizeOf(b)
-        const ax = a.x + sa.w / 2
-        const ay = a.y + sa.h / 2
-        const dx = b.x + sb.w / 2 - ax
-        const dy = b.y + sb.h / 2 - ay
-        if (!dx && !dy) return { x: ax, y: ay }
-        const tt = Math.min(dx ? sa.w / 2 / Math.abs(dx) : Infinity, dy ? sa.h / 2 / Math.abs(dy) : Infinity)
-        return { x: ax + dx * tt, y: ay + dy * tt }
+      /* ---------- arrows ---------- */
+      /** Where the line from the middle of the card towards a point leaves the edge of the card. */
+      const edgeToward = (c, tx, ty) => {
+        const s = sizeOf(c)
+        const cx = c.x + s.w / 2
+        const cy = c.y + s.h / 2
+        const dx = tx - cx
+        const dy = ty - cy
+        if (!dx && !dy) return { x: cx, y: cy }
+        const f = Math.min(dx ? s.w / 2 / Math.abs(dx) : Infinity, dy ? s.h / 2 / Math.abs(dy) : Infinity)
+        return { x: cx + dx * f, y: cy + dy * f }
+      }
+      const centerOf = (c) => {
+        const s = sizeOf(c)
+        return { x: c.x + s.w / 2, y: c.y + s.h / 2 }
       }
       const drawLinks = () => {
         linkLayer.replaceChildren()
@@ -218,300 +284,1722 @@ export default {
           const a = byId.get(l.from)
           const b = byId.get(l.to)
           if (!a || !b) continue
-          const p = edgePoint(a, b)
-          const q = edgePoint(b, a)
-          const g = svgEl('g', { class: 'bd-link' + (selected?.kind === 'link' && selected.id === l.id ? ' on' : '') })
-          g.append(svgEl('line', { x1: p.x, y1: p.y, x2: q.x, y2: q.y, class: 'bd-line', 'marker-end': 'url(#bd-arrow)' }))
-          const hit = svgEl('line', { x1: p.x, y1: p.y, x2: q.x, y2: q.y, class: 'bd-hit' })
-          hit.addEventListener('pointerdown', (e) => {
-            e.stopPropagation()
-            select_({ kind: 'link', id: l.id })
-            canvas.focus()
+          const ca = centerOf(a)
+          const cb = centerOf(b)
+          let p
+          let q
+          let ctrl = null
+          if (l.curve) {
+            const mx = (ca.x + cb.x) / 2
+            const my = (ca.y + cb.y) / 2
+            const len = Math.hypot(cb.x - ca.x, cb.y - ca.y) || 1
+            ctrl = { x: mx - ((cb.y - ca.y) / len) * len * 0.22, y: my + ((cb.x - ca.x) / len) * len * 0.22 }
+            p = edgeToward(a, ctrl.x, ctrl.y)
+            q = edgeToward(b, ctrl.x, ctrl.y)
+          } else {
+            p = edgeToward(a, cb.x, cb.y)
+            q = edgeToward(b, ca.x, ca.y)
+          }
+          const g = svgEl('g', { class: 'bd-link' + (selLink === l.id ? ' on' : ''), 'data-id': l.id })
+          const d = ctrl ? `M${p.x} ${p.y} Q${ctrl.x} ${ctrl.y} ${q.x} ${q.y}` : `M${p.x} ${p.y} L${q.x} ${q.y}`
+          const head = l.head ?? 'end'
+          const line = svgEl('path', {
+            d,
+            class: 'bd-line',
+            'marker-end': head === 'end' || head === 'both' ? 'url(#bd-arrow)' : null,
+            'marker-start': head === 'both' ? 'url(#bd-arrow)' : null
           })
-          g.append(hit)
+          if (l.color) line.style.stroke = l.color
+          if (l.style === 'dashed') line.style.strokeDasharray = '9 6'
+          if (l.style === 'dotted') line.style.strokeDasharray = '2 6'
+          g.append(line, svgEl('path', { d, class: 'bd-hit' }))
+          if (l.label) {
+            const mid = ctrl ? { x: 0.25 * p.x + 0.5 * ctrl.x + 0.25 * q.x, y: 0.25 * p.y + 0.5 * ctrl.y + 0.25 * q.y } : { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+            const text = svgEl('text', { x: mid.x, y: mid.y, class: 'bd-label', 'text-anchor': 'middle', 'dominant-baseline': 'central' })
+            text.textContent = l.label
+            g.append(text)
+          }
           linkLayer.append(g)
         }
       }
-
-      /* --- cards --- */
-      const select_ = (what) => {
-        selected = what
-        for (const [id, node] of cardEls) node.classList.toggle('on', what?.kind === 'card' && what.id === id)
+      const addLink = (from, to) => {
+        if (from === to || board.links.some((l) => l.from === from && l.to === to)) return null
+        const l = { id: uid(), from, to, head: 'end', style: 'solid' }
+        board.links.push(l)
         drawLinks()
-        const card = what?.kind === 'card' ? board.cards.find((c) => c.id === what.id) : null
-        for (const s of swatches.children) s.classList.toggle('on', !!card && (card.color ?? '') === s.dataset.color)
-        swatches.classList.toggle('off', !card)
+        commit()
+        return l
       }
 
-      const place = (card, node) => {
+      /* ---------- cards ---------- */
+      const loadNote = async (p) => {
+        if (notes.has(p)) return
+        notes.set(p, { title: nameOf(p), excerpt: '' })
+        try {
+          const text = await api.vault.read(p)
+          const lines = text
+            .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+            .split(/\r?\n/)
+            .map((s) => s.replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/, '').replace(/[*_`~]|!?\[\[|\]\]/g, '').trim())
+            .filter(Boolean)
+          // the first line is the title when it repeats the name of the note
+          if (lines[0] && lines[0].toLowerCase() === nameOf(p).toLowerCase()) lines.shift()
+          notes.set(p, { title: nameOf(p), excerpt: lines.slice(0, 5).join('\n').slice(0, 260) })
+        } catch {
+          notes.set(p, { title: nameOf(p), excerpt: '', gone: true })
+        }
+        for (const c of board?.cards ?? []) if (c.type === 'note' && c.note === p) renderCard(c)
+      }
+
+      const shapeSvg = (card) => {
+        const s = sizeOf(card)
+        const svg = svgEl('svg', { class: 'bd-shape-svg', viewBox: `0 0 ${s.w} ${s.h}`, preserveAspectRatio: 'none' })
+        const attrs = { class: 'bd-shape-fill', 'vector-effect': 'non-scaling-stroke' }
+        let shape
+        if (card.shape === 'ellipse') shape = svgEl('ellipse', { cx: s.w / 2, cy: s.h / 2, rx: s.w / 2 - 1, ry: s.h / 2 - 1, ...attrs })
+        else if (card.shape === 'diamond') shape = svgEl('polygon', { points: `${s.w / 2},1 ${s.w - 1},${s.h / 2} ${s.w / 2},${s.h - 1} 1,${s.h / 2}`, ...attrs })
+        else shape = svgEl('rect', { x: 1, y: 1, width: s.w - 2, height: s.h - 2, rx: 12, ...attrs })
+        svg.append(shape)
+        return svg
+      }
+
+      const renderCard = (card) => {
+        const node = cardEls.get(card.id)
+        if (!node) return
+        const body = node.querySelector('.bd-body')
+        body.replaceChildren()
+        node.className = `bd-card t-${card.type}` + (sel.has(card.id) ? ' on' : '') + (card.locked ? ' locked' : '') + (card.color ? ' colored' : '')
+        if (card.color || card.type === 'sticky') node.style.setProperty('--c', card.color || STICKY)
+        else node.style.removeProperty('--c')
+        const fs = FONTS[clamp((card.fs ?? 1) | 0, 0, 3)]
+        body.style.fontSize = fs + 'px'
+        if (card.type === 'text' || card.type === 'sticky') {
+          body.append(el('div', { className: 'bd-text', textContent: card.text ?? '' }))
+        } else if (card.type === 'shape') {
+          body.append(shapeSvg(card), el('div', { className: 'bd-text bd-shape-text', textContent: card.text ?? '' }))
+        } else if (card.type === 'frame') {
+          body.append(el('div', { className: 'bd-frame-title', textContent: card.text || tt('Рамка', 'Frame') }))
+        } else if (card.type === 'note') {
+          const info = notes.get(card.note)
+          const ok = !info?.gone && api.vault.list().includes(card.note)
+          const open = el('button', { className: 'bd-open', title: tt('Открыть заметку', 'Open the note'), textContent: '↗' })
+          open.onpointerdown = (e) => e.stopPropagation()
+          open.onclick = () => ok && api.vault.open(card.note)
+          body.append(
+            el('div', { className: 'bd-note-head' }, [
+              el('span', { className: 'bd-note-name' + (ok ? '' : ' gone'), textContent: nameOf(card.note), title: ok ? card.note : tt('Заметки нет', 'No such note') }),
+              open
+            ]),
+            el('div', { className: 'bd-note-excerpt', textContent: info?.excerpt ?? '' })
+          )
+          void loadNote(card.note)
+        } else if (card.type === 'image') {
+          body.append(el('img', { className: 'bd-img', src: urlOf(card.src), draggable: false, alt: nameOf(card.src) }))
+        } else if (card.type === 'link') {
+          body.append(
+            el('div', { className: 'bd-link-card' }, [
+              el('div', { className: 'bd-link-host', textContent: '🔗 ' + (card.text || hostOf(card.url)) }),
+              el('div', { className: 'bd-link-url', textContent: card.url })
+            ])
+          )
+        } else if (card.type === 'todo') {
+          const lines = (card.text ?? '').split('\n')
+          const list = el('div', { className: 'bd-todo' })
+          lines.forEach((line, i) => {
+            const m = /^\[( |x)\]\s?(.*)$/i.exec(line)
+            const done = !!m && m[1].toLowerCase() === 'x'
+            const box = el('input', { type: 'checkbox', checked: done })
+            box.onpointerdown = (e) => e.stopPropagation()
+            box.onchange = () => {
+              const all = (card.text ?? '').split('\n')
+              all[i] = `[${box.checked ? 'x' : ' '}] ${m ? m[2] : line}`
+              card.text = all.join('\n')
+              commit()
+              renderCard(card)
+            }
+            list.append(el('label', { className: 'bd-todo-row' + (done ? ' done' : '') }, [box, el('span', { textContent: m ? m[2] : line })]))
+          })
+          if (!card.text) list.append(el('div', { className: 'bd-todo-empty', textContent: tt('Двойной клик — добавить пункты', 'Double click to add items') }))
+          body.append(list)
+        }
+        if (card.type === 'shape' || card.type === 'frame') node.dataset.shape = card.shape ?? 'rect'
+      }
+
+      const place = (card) => {
+        const node = cardEls.get(card.id)
+        if (!node) return
         const s = sizeOf(card)
         node.style.left = card.x + 'px'
         node.style.top = card.y + 'px'
         node.style.width = s.w + 'px'
         node.style.height = s.h + 'px'
-        node.style.setProperty('--c', card.color || 'transparent')
-        node.classList.toggle('colored', !!card.color)
-      }
-
-      const startEdit = (card, node, body) => {
-        if (editing) return
-        editing = card.id
-        const area = el('textarea', { className: 'bd-edit', value: card.text ?? '', placeholder: t().placeholder, spellcheck: false })
-        body.replaceChildren(area)
-        area.focus()
-        area.setSelectionRange(area.value.length, area.value.length)
-        const done = () => {
-          if (editing !== card.id) return
-          editing = null
-          if (area.value !== (card.text ?? '')) {
-            card.text = area.value
-            changed()
-          }
-          renderBody(card, body)
-        }
-        area.onblur = done
-        area.onkeydown = (e) => {
-          e.stopPropagation()
-          if (e.key === 'Escape') {
-            area.value = card.text ?? ''
-            area.blur()
-          }
-        }
-      }
-
-      const noteExists = (p) => api.vault.list().includes(p)
-      const renderBody = (card, body) => {
-        body.replaceChildren()
-        if (card.note) {
-          const ok = noteExists(card.note)
-          const open = el('button', { className: 'bd-open', title: t().openNote, textContent: '↗' })
-          open.onpointerdown = (e) => e.stopPropagation()
-          open.onclick = () => ok && api.vault.open(card.note)
-          body.append(el('span', { className: 'bd-note-name' + (ok ? '' : ' gone'), textContent: nameOf(card.note), title: ok ? card.note : t().missing }), open)
-        } else {
-          body.append(el('div', { className: 'bd-text', textContent: card.text ?? '' }))
-        }
       }
 
       const makeCard = (card) => {
-        const node = el('div', { className: 'bd-card' + (card.note ? ' is-note' : '') })
-        const body = el('div', { className: 'bd-body' })
-        const port = el('div', { className: 'bd-port', title: '→' })
+        const node = el('div', { className: 'bd-card' })
+        node.dataset.id = card.id
+        node.append(el('div', { className: 'bd-body' }))
+        for (const side of ['t', 'r', 'b', 'l']) {
+          const port = el('div', { className: 'bd-port p-' + side, title: tt('Потяните к другой карточке — получится стрелка', 'Drag to another card to make an arrow') })
+          port.addEventListener('pointerdown', (e) => portDown(e, card, port))
+          node.append(port)
+        }
         const grip = el('div', { className: 'bd-grip' })
-        node.append(body, port, grip)
-        renderBody(card, body)
-        place(card, node)
-        cardEls.set(card.id, node)
-        cardLayer.append(node)
-
+        grip.addEventListener('pointerdown', (e) => gripDown(e, card, grip))
+        node.append(grip)
+        node.addEventListener('pointerdown', (e) => cardDown(e, card, node))
         node.addEventListener('dblclick', (e) => {
           e.stopPropagation()
-          if (card.note) {
-            if (noteExists(card.note)) api.vault.open(card.note)
-          } else startEdit(card, node, body)
+          activate(card)
         })
-        // moving the card
-        node.addEventListener('pointerdown', (e) => {
-          if (e.button !== 0 || e.target === port || e.target === grip || e.target.closest('textarea, button')) return
-          e.stopPropagation()
-          select_({ kind: 'card', id: card.id })
-          canvas.focus()
-          const from = { x: e.clientX, y: e.clientY, cx: card.x, cy: card.y }
-          node.setPointerCapture(e.pointerId)
-          let moved = false
-          const move = (ev) => {
-            const k = board.view.k
-            const dx = (ev.clientX - from.x) / k
-            const dy = (ev.clientY - from.y) / k
-            if (!moved && Math.hypot(dx, dy) * k < 3) return
-            moved = true
-            card.x = Math.round(from.cx + dx)
-            card.y = Math.round(from.cy + dy)
-            place(card, node)
-            drawLinks()
-          }
-          const up = () => {
-            node.removeEventListener('pointermove', move)
-            node.removeEventListener('pointerup', up)
-            node.removeEventListener('pointercancel', up)
-            if (moved) changed()
-          }
-          node.addEventListener('pointermove', move)
-          node.addEventListener('pointerup', up)
-          node.addEventListener('pointercancel', up)
-        })
-        // resizing
-        grip.addEventListener('pointerdown', (e) => {
-          if (e.button !== 0) return
-          e.stopPropagation()
-          select_({ kind: 'card', id: card.id })
-          const from = { x: e.clientX, y: e.clientY, ...sizeOf(card) }
-          grip.setPointerCapture(e.pointerId)
-          const move = (ev) => {
-            const k = board.view.k
-            card.w = Math.round(clamp(from.w + (ev.clientX - from.x) / k, 120, 800))
-            card.h = Math.round(clamp(from.h + (ev.clientY - from.y) / k, card.note ? 40 : 60, 800))
-            place(card, node)
-            drawLinks()
-          }
-          const up = () => {
-            grip.removeEventListener('pointermove', move)
-            grip.removeEventListener('pointerup', up)
-            grip.removeEventListener('pointercancel', up)
-            changed()
-          }
-          grip.addEventListener('pointermove', move)
-          grip.addEventListener('pointerup', up)
-          grip.addEventListener('pointercancel', up)
-        })
-        // drawing an arrow from the dot to another card
-        port.addEventListener('pointerdown', (e) => {
-          if (e.button !== 0) return
-          e.stopPropagation()
-          port.setPointerCapture(e.pointerId)
-          const s = sizeOf(card)
-          temp.setAttribute('x1', card.x + s.w)
-          temp.setAttribute('y1', card.y + s.h / 2)
-          temp.setAttribute('visibility', 'visible')
-          const move = (ev) => {
-            const p = toWorld(ev.clientX, ev.clientY)
-            temp.setAttribute('x2', p.x)
-            temp.setAttribute('y2', p.y)
-          }
-          move(e)
-          const up = (ev) => {
-            port.removeEventListener('pointermove', move)
-            port.removeEventListener('pointerup', up)
-            port.removeEventListener('pointercancel', up)
-            temp.setAttribute('visibility', 'hidden')
-            const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.bd-card')
-            const toId = [...cardEls].find(([, n]) => n === target)?.[0]
-            if (toId && toId !== card.id && !board.links.some((l) => (l.from === card.id && l.to === toId) || (l.from === toId && l.to === card.id))) {
-              board.links.push({ id: uid(), from: card.id, to: toId })
-              drawLinks()
-              changed()
-            }
-          }
-          port.addEventListener('pointermove', move)
-          port.addEventListener('pointerup', up)
-          port.addEventListener('pointercancel', up)
-        })
+        cardEls.set(card.id, node)
+        ;(card.type === 'frame' ? frameLayer : cardLayer).append(node)
+        renderCard(card)
+        place(card)
         return node
       }
 
-      const addCard = (props, at) => {
-        const s = { w: props.note ? 220 : 200, h: props.note ? 52 : 110 }
-        const r = canvas.getBoundingClientRect()
-        const center = toWorld(r.left + r.width / 2, r.top + r.height / 2)
-        // a new card lands where it was asked for, or in the middle of the view, a little off the one before it
-        let x = Math.round(at ? at.x - s.w / 2 : center.x - s.w / 2)
-        let y = Math.round(at ? at.y - s.h / 2 : center.y - s.h / 2)
-        if (!at) {
-          // the middle of the view, or the nearest free place to it (a row to the right, then the next row down)
-          const free = (px, py) => !board.cards.some((c) => px < c.x + sizeOf(c).w + 16 && px + s.w + 16 > c.x && py < c.y + sizeOf(c).h + 16 && py + s.h + 16 > c.y)
-          const x0 = x
-          const y0 = y
-          for (let i = 1; i < 60 && !free(x, y); i++) {
-            x = x0 + (i % 4) * (s.w + 24)
-            y = y0 + Math.floor(i / 4) * (s.h + 24)
-          }
+      /** Cards in the order of the array: what is later in it is on top (frames have a layer of their own below). */
+      const restack = () => {
+        for (const c of board.cards) cardEls.get(c.id) && (c.type === 'frame' ? frameLayer : cardLayer).append(cardEls.get(c.id))
+      }
+
+      const rebuild = () => {
+        cardEls.clear()
+        frameLayer.replaceChildren()
+        cardLayer.replaceChildren()
+        for (const c of board.cards) makeCard(c)
+        drawLinks()
+        refreshSel()
+        hint.hidden = board.cards.length > 0 && !broken
+        drawMini()
+      }
+
+      const byId = (id) => board.cards.find((c) => c.id === id)
+      const selected = () => board.cards.filter((c) => sel.has(c.id))
+
+      /** The cards that lie inside a frame (their middle is in it). */
+      const membersOf = (frame) => {
+        const r = rectOf(frame)
+        return board.cards.filter((c) => {
+          if (c === frame) return false
+          const m = centerOf(c)
+          return m.x > r.x && m.x < r.x + r.w && m.y > r.y && m.y < r.y + r.h && (c.type !== 'frame' || sizeOf(c).w * sizeOf(c).h < r.w * r.h)
+        })
+      }
+
+      /* ---------- selection ---------- */
+      const setSel = (ids, link = null) => {
+        sel = new Set(ids)
+        selLink = link
+        refreshSel()
+      }
+      const refreshSel = () => {
+        for (const [id, node] of cardEls) node.classList.toggle('on', sel.has(id))
+        drawLinks()
+        placeFloat()
+        drawMini()
+      }
+
+      const floatBtn = (label, title, onclick) => el('button', { className: 'bd-fbtn', textContent: label, title, onclick })
+      const placeFloat = () => {
+        floatBar.replaceChildren()
+        const cards = selected()
+        if (editing || arrowMode || (!cards.length && !selLink)) {
+          floatBar.hidden = true
+          return
         }
-        const card = { id: uid(), x, y, ...props }
-        board.cards.push(card)
-        const node = makeCard(card)
-        select_({ kind: 'card', id: card.id })
-        changed()
-        if (!props.note) startEdit(card, node, node.querySelector('.bd-body'))
+        let anchor
+        if (cards.length) {
+          const b = boundsOf(cards)
+          anchor = { x: b.x + b.w / 2, y: b.y }
+          const sw = el('button', { className: 'bd-fbtn bd-fcolor', title: tt('Цвет', 'Colour') })
+          sw.style.setProperty('--c', cards.length === 1 && cards[0].color ? cards[0].color : 'transparent')
+          sw.onclick = (e) => menuAtButton(e, colorMenu(cards))
+          floatBar.append(sw)
+          if (cards.length === 1) floatBar.append(floatBtn('→', tt('Стрелка отсюда (A)', 'Arrow from here (A)'), () => startArrowMode(cards[0])))
+          floatBar.append(
+            floatBtn('⧉', tt('Дублировать (Ctrl+Shift+D)', 'Duplicate (Ctrl+Shift+D)'), () => duplicate()),
+            floatBtn(cards.every((c) => c.locked) ? '🔓' : '🔒', tt('Закрепить / открепить', 'Lock / unlock'), () => toggleLock(cards)),
+            floatBtn('⋯', tt('Меню', 'Menu'), (e) => menuAtButton(e, cards.length > 1 ? multiMenu() : cardMenu(cards[0]))),
+            floatBtn('🗑', tt('Удалить (Delete)', 'Delete (Delete)'), () => removeSelected())
+          )
+        } else {
+          const l = board.links.find((x) => x.id === selLink)
+          const a = l && byId(l.from)
+          const b = l && byId(l.to)
+          if (!a || !b) {
+            floatBar.hidden = true
+            return
+          }
+          const m = { x: (centerOf(a).x + centerOf(b).x) / 2, y: (centerOf(a).y + centerOf(b).y) / 2 }
+          anchor = { x: m.x, y: m.y - 14 }
+          floatBar.append(
+            floatBtn('✎', tt('Подпись', 'Label'), () => editLabel(l)),
+            floatBtn('┄', tt('Вид линии', 'Line style'), (e) => menuAtButton(e, linkMenu(l))),
+            floatBtn('⇄', tt('Развернуть', 'Reverse'), () => reverseLink(l)),
+            floatBtn('🗑', tt('Удалить', 'Delete'), () => removeSelected())
+          )
+        }
+        floatBar.hidden = false
+        const r = canvas.getBoundingClientRect()
+        const s = toScreen(anchor.x, anchor.y)
+        const w = floatBar.offsetWidth || 160
+        floatBar.style.left = clamp(s.x - r.left - w / 2, 6, Math.max(6, r.width - w - 6)) + 'px'
+        floatBar.style.top = Math.max(6, s.y - r.top - 46) + 'px'
+      }
+
+      /* ---------- creating, copying, deleting ---------- */
+      /** A free place of the size near `want` (or the middle of the view): a row to the right, then the next row down. */
+      const freeSpot = (w, h, want) => {
+        const c0 = want ?? viewCenter()
+        let x = Math.round(c0.x - w / 2)
+        let y = Math.round(c0.y - h / 2)
+        if (want) return { x, y }
+        const free = (px, py) => !board.cards.some((c) => c.type !== 'frame' && px < c.x + sizeOf(c).w + 16 && px + w + 16 > c.x && py < c.y + sizeOf(c).h + 16 && py + h + 16 > c.y)
+        const x0 = x
+        const y0 = y
+        for (let i = 1; i < 80 && !free(x, y); i++) {
+          x = x0 + (i % 4) * (w + 24)
+          y = y0 + Math.floor(i / 4) * (h + 24)
+        }
+        return { x, y }
+      }
+
+      const addCard = (props, at, edit = true) => {
+        const [dw, dh] = DEF[props.type]
+        const w = props.w ?? dw
+        const h = props.h ?? dh
+        const p = freeSpot(w, h, at)
+        const card = { id: uid(), x: p.x, y: p.y, ...props }
+        if (card.w === undefined && (w !== dw || h !== dh)) card.w = w
+        // frames go to the back of the array, the rest to the front
+        if (card.type === 'frame') board.cards.unshift(card)
+        else board.cards.push(card)
+        makeCard(card)
+        setSel([card.id])
+        commit()
         hint.hidden = true
+        if (edit && ['text', 'sticky', 'shape', 'todo', 'frame'].includes(card.type)) startEdit(card)
         return card
       }
 
-      const removeSelected = () => {
-        if (!selected || !board) return
-        if (selected.kind === 'card') {
-          board.cards = board.cards.filter((c) => c.id !== selected.id)
-          board.links = board.links.filter((l) => l.from !== selected.id && l.to !== selected.id)
-          cardEls.get(selected.id)?.remove()
-          cardEls.delete(selected.id)
-        } else board.links = board.links.filter((l) => l.id !== selected.id)
-        select_(null)
-        changed()
-        hint.hidden = board.cards.length > 0
+      const cloneCards = (cards, dx, dy) => {
+        const ids = new Map(cards.map((c) => [c.id, uid()]))
+        const copies = cards.map((c) => ({ ...JSON.parse(JSON.stringify(c)), id: ids.get(c.id), x: c.x + dx, y: c.y + dy }))
+        const arrows = board.links.filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to) }))
+        return { copies, arrows }
+      }
+      const insertClones = ({ copies, arrows }) => {
+        const frames = copies.filter((c) => c.type === 'frame')
+        board.cards.unshift(...frames)
+        board.cards.push(...copies.filter((c) => c.type !== 'frame'))
+        board.links.push(...arrows)
+        rebuild()
+        setSel(copies.map((c) => c.id))
+        commit()
+      }
+      const duplicate = () => {
+        const cards = withMembers(selected())
+        if (cards.length) insertClones(cloneCards(cards, 28, 28))
+      }
+      /** The selection, and the cards inside the frames in it. */
+      const withMembers = (cards) => {
+        const all = new Map(cards.map((c) => [c.id, c]))
+        for (const f of cards.filter((c) => c.type === 'frame')) for (const m of membersOf(f)) all.set(m.id, m)
+        return [...all.values()]
+      }
+      const clipboardText = () => {
+        const cards = withMembers(selected())
+        const ids = new Set(cards.map((c) => c.id))
+        return CLIP + JSON.stringify({ cards, links: board.links.filter((l) => ids.has(l.from) && ids.has(l.to)) })
+      }
+      let memory = ''
+      const copySel = async () => {
+        if (!sel.size) return
+        memory = clipboardText()
+        pasteShift = 0
+        try {
+          await navigator.clipboard.writeText(memory)
+        } catch {
+          /* the board's own copy is kept */
+        }
+      }
+      const cutSel = async () => {
+        await copySel()
+        removeSelected(true)
+      }
+      const pasteHere = async (at) => {
+        if (!board || broken) return
+        let text = ''
+        let image = null
+        try {
+          const clip = await window.syntex.app.readClipboard()
+          text = clip.text ?? ''
+          image = clip.image
+        } catch {
+          /* nothing readable */
+        }
+        const where = at ?? viewCenter()
+        if (text.startsWith(CLIP)) {
+          try {
+            const src = JSON.parse(text.slice(CLIP.length))
+            const cards = (src.cards ?? []).filter((c) => c && DEF[c.type])
+            if (cards.length) {
+              const b = boundsOf(cards)
+              const dx = at ? at.x - b.x - b.w / 2 : 28 * (1 + pasteShift++)
+              const dy = at ? at.y - b.y - b.h / 2 : 28 * pasteShift
+              const ids = new Map(cards.map((c) => [c.id, uid()]))
+              const copies = cards.map((c) => ({ ...c, id: ids.get(c.id), x: Math.round(c.x + dx), y: Math.round(c.y + dy) }))
+              const arrows = (src.links ?? []).filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to) }))
+              insertClones({ copies, arrows })
+              return
+            }
+          } catch {
+            /* plain text then */
+          }
+        }
+        if (image && image.length) {
+          await addImage('Pasted image.png', image, where)
+          return
+        }
+        const t = text.trim()
+        if (!t) return
+        if (IS_URL.test(t)) addCard({ type: 'link', url: normUrl(t) }, where, false)
+        else addCard({ type: 'text', text: t, w: clamp(t.length * 7, 180, 360), h: undefined }, where, false)
       }
 
-      /* --- the canvas: pan, zoom, new card --- */
-      canvas.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || !board) return
+      const addImage = async (name, bytes, at) => {
+        try {
+          const p = await api.vault.saveAttachment(name, bytes)
+          const dims = await new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+            img.onerror = () => resolve({ w: 260, h: 180 })
+            img.src = urlOf(p)
+          })
+          const w = Math.min(340, dims.w || 260)
+          addCard({ type: 'image', src: p, w, h: Math.round((w * (dims.h || 180)) / (dims.w || 260)) }, at, false)
+        } catch (e) {
+          api.ui.notice(e instanceof Error ? e.message : String(e), 6000)
+        }
+      }
+      const pickImages = (at) => {
+        const input = el('input', { type: 'file', accept: 'image/*', multiple: true })
+        input.onchange = async () => {
+          let i = 0
+          for (const f of input.files) {
+            const spot = at ? { x: at.x + i * 30, y: at.y + i * 30 } : undefined
+            await addImage(f.name || 'image.png', new Uint8Array(await f.arrayBuffer()), spot)
+            i++
+          }
+        }
+        input.click()
+      }
+      const askLink = async (at) => {
+        const raw = await api.ui.prompt(tt('Адрес ссылки', 'Link address'), 'https://')
+        const u = raw?.trim()
+        if (u && u !== 'https://') addCard({ type: 'link', url: normUrl(u) }, at, false)
+      }
+
+      const removeSelected = (keepFrameContents = false) => {
+        if (!board || broken) return
+        if (selLink && !sel.size) {
+          board.links = board.links.filter((l) => l.id !== selLink)
+          selLink = null
+          drawLinks()
+          commit()
+          placeFloat()
+          return
+        }
+        const ids = new Set([...sel].filter((id) => !byId(id)?.locked))
+        if (!ids.size) return
+        board.cards = board.cards.filter((c) => !ids.has(c.id))
+        board.links = board.links.filter((l) => !ids.has(l.from) && !ids.has(l.to))
+        for (const id of ids) {
+          cardEls.get(id)?.remove()
+          cardEls.delete(id)
+        }
+        void keepFrameContents
+        sel = new Set()
+        selLink = null
+        refreshSel()
+        commit()
+        hint.hidden = board.cards.length > 0
+      }
+      const removeFrameWithContents = (frame) => {
+        const ids = new Set([frame.id, ...membersOf(frame).map((c) => c.id)])
+        setSel([...ids])
+        for (const id of [...ids]) if (byId(id)?.locked) ids.delete(id)
+        sel = ids
+        removeSelected()
+      }
+
+      /* ---------- editing text ---------- */
+      const startEdit = (card, target) => {
+        if (editing || broken) return
+        const node = cardEls.get(card.id)
+        if (!node) return
+        const frame = card.type === 'frame'
+        const wrap = node.querySelector(frame ? '.bd-frame-title' : '.bd-body')
+        if (!wrap) return
+        editing = card.id
+        placeFloat()
+        const field = frame
+          ? el('input', { className: 'bd-edit bd-edit-title', value: card.text ?? '', placeholder: tt('Название рамки', 'Name of the frame'), spellcheck: false })
+          : el('textarea', {
+              className: 'bd-edit',
+              value: card.text ?? '',
+              spellcheck: false,
+              placeholder: card.type === 'todo' ? tt('По пункту на строке', 'One item per line') : tt('Текст', 'Text')
+            })
+        if (card.type === 'todo') {
+          // the list is edited as plain lines: "[ ] to do", "[x] done"
+          field.value = (card.text ?? '').split('\n').map((l) => (/^\[( |x)\]/i.test(l) ? l : l ? '[ ] ' + l : l)).join('\n') || '[ ] '
+        }
+        const keep = frame ? null : wrap.firstChild
+        void keep
+        wrap.replaceChildren(field)
+        field.focus()
+        if (target === 'all') field.select()
+        else field.setSelectionRange(field.value.length, field.value.length)
+        const done = (cancel) => {
+          if (editing !== card.id) return
+          editing = null
+          if (!cancel && field.value !== (card.text ?? '')) {
+            card.text = field.value
+            commit()
+          }
+          renderCard(card)
+          placeFloat()
+          canvas.focus()
+        }
+        field.onblur = () => done(false)
+        field.onkeydown = (e) => {
+          e.stopPropagation()
+          if (e.key === 'Escape') done(true)
+          else if (e.key === 'Enter' && (e.ctrlKey || frame)) done(false)
+          else if (e.key === 'Enter' && card.type === 'todo') {
+            e.preventDefault()
+            const at = field.selectionStart
+            field.setRangeText('\n[ ] ', at, field.selectionEnd, 'end')
+          }
+        }
+        field.onpointerdown = (e) => e.stopPropagation()
+      }
+      const editLabel = async (l) => {
+        const v = await api.ui.prompt(tt('Подпись стрелки', 'Label of the arrow'), l.label ?? '')
+        if (v === null) return
+        l.label = v.trim() || undefined
+        drawLinks()
+        commit()
+      }
+      const reverseLink = (l) => {
+        ;[l.from, l.to] = [l.to, l.from]
+        drawLinks()
+        commit()
+      }
+      /** Double click: edit a card of text, open a note or a link. */
+      const activate = (card) => {
+        if (card.locked && !['note', 'link'].includes(card.type)) return
+        if (card.type === 'note') {
+          if (api.vault.list().includes(card.note)) api.vault.open(card.note)
+        } else if (card.type === 'link') window.open(normUrl(card.url))
+        else if (card.type === 'image') window.open(urlOf(card.src))
+        else startEdit(card)
+      }
+
+      /* ---------- moving cards ---------- */
+      /** Where the group would stop: against the edges and middles of other cards (guide lines), or against the grid. */
+      const snapMove = (box, dx, dy, movingIds, off) => {
+        const k = board.view.k
+        const th = 7 / k
+        let nx = box.x + dx
+        let ny = box.y + dy
+        const lines = []
+        if (!off && board.settings.guides !== false) {
+          const others = board.cards.filter((c) => !movingIds.has(c.id) && c.type !== 'frame')
+          let bx = th
+          let by = th
+          let gx = null
+          let gy = null
+          for (const o of others) {
+            const r = rectOf(o)
+            for (const mine of [nx, nx + box.w / 2, nx + box.w]) {
+              for (const theirs of [r.x, r.x + r.w / 2, r.x + r.w]) {
+                if (Math.abs(theirs - mine) < bx) {
+                  bx = Math.abs(theirs - mine)
+                  gx = { shift: theirs - mine, at: theirs, r }
+                }
+              }
+            }
+            for (const mine of [ny, ny + box.h / 2, ny + box.h]) {
+              for (const theirs of [r.y, r.y + r.h / 2, r.y + r.h]) {
+                if (Math.abs(theirs - mine) < by) {
+                  by = Math.abs(theirs - mine)
+                  gy = { shift: theirs - mine, at: theirs, r }
+                }
+              }
+            }
+          }
+          if (gx) {
+            nx += gx.shift
+            lines.push({ v: true, at: gx.at, from: Math.min(gx.r.y, ny) - 20, to: Math.max(gx.r.y + gx.r.h, ny + box.h) + 20 })
+          }
+          if (gy) {
+            ny += gy.shift
+            lines.push({ v: false, at: gy.at, from: Math.min(gy.r.x, nx) - 20, to: Math.max(gy.r.x + gy.r.w, nx + box.w) + 20 })
+          }
+          if (board.settings.snapGrid) {
+            if (!gx) nx = Math.round(nx / GRID) * GRID
+            if (!gy) ny = Math.round(ny / GRID) * GRID
+          }
+        } else if (!off && board.settings.snapGrid) {
+          nx = Math.round(nx / GRID) * GRID
+          ny = Math.round(ny / GRID) * GRID
+        }
+        return { dx: nx - box.x, dy: ny - box.y, lines }
+      }
+      const showGuides = (lines) => {
+        guides.replaceChildren()
+        for (const l of lines) {
+          guides.append(svgEl('line', l.v ? { x1: l.at, x2: l.at, y1: l.from, y2: l.to, class: 'bd-guide' } : { y1: l.at, y2: l.at, x1: l.from, x2: l.to, class: 'bd-guide' }))
+        }
+      }
+
+      const cardDown = (e, card, node) => {
+        if (e.button !== 0 || e.target.closest('textarea, input, button, .bd-port, .bd-grip')) return
+        if (arrowMode) {
+          e.stopPropagation()
+          finishArrowMode(card)
+          return
+        }
+        if (spaceDown || tool === 'hand') return // the canvas pans
+        e.stopPropagation()
         canvas.focus()
-        select_(null)
-        const from = { x: e.clientX, y: e.clientY, vx: board.view.x, vy: board.view.y }
-        canvas.setPointerCapture(e.pointerId)
-        canvas.classList.add('panning')
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+          const next = new Set(sel)
+          if (next.has(card.id)) next.delete(card.id)
+          else next.add(card.id)
+          setSel(next)
+          return
+        }
+        if (!sel.has(card.id)) setSel([card.id])
+        else if (selLink) setSel(sel)
+        let moving = withMembers(selected()).filter((c) => !c.locked)
+        if (!moving.length) return
+        const origin = new Map(moving.map((c) => [c.id, { x: c.x, y: c.y }]))
+        const start = { x: e.clientX, y: e.clientY }
+        const startAlt = e.altKey
+        let box = boundsOf(moving)
+        let moved = false
+        node.setPointerCapture(e.pointerId)
         const move = (ev) => {
-          board.view.x = from.vx + ev.clientX - from.x
-          board.view.y = from.vy + ev.clientY - from.y
+          const k = board.view.k
+          let dx = (ev.clientX - start.x) / k
+          let dy = (ev.clientY - start.y) / k
+          if (!moved) {
+            if (Math.hypot(dx, dy) * k < 3) return
+            moved = true
+            if (startAlt) {
+              // Alt: the copies are what is dragged, the originals stay
+              const made = cloneCards(moving, 0, 0)
+              insertClones(made)
+              moving = made.copies
+              origin.clear()
+              for (const c of moving) origin.set(c.id, { x: c.x, y: c.y })
+              box = boundsOf(moving)
+            }
+            canvas.classList.add('moving')
+          }
+          const snapped = snapMove(box, dx, dy, new Set(moving.map((c) => c.id)), ev.altKey && !startAlt)
+          dx = snapped.dx
+          dy = snapped.dy
+          for (const c of moving) {
+            const o = origin.get(c.id)
+            c.x = Math.round(o.x + dx)
+            c.y = Math.round(o.y + dy)
+            place(c)
+          }
+          showGuides(snapped.lines)
+          drawLinks()
+          placeFloat()
+          drawMini()
+        }
+        const up = () => {
+          node.removeEventListener('pointermove', move)
+          node.removeEventListener('pointerup', up)
+          node.removeEventListener('pointercancel', up)
+          canvas.classList.remove('moving')
+          guides.replaceChildren()
+          if (moved) commit()
+        }
+        node.addEventListener('pointermove', move)
+        node.addEventListener('pointerup', up)
+        node.addEventListener('pointercancel', up)
+      }
+
+      const gripDown = (e, card, grip) => {
+        if (e.button !== 0 || card.locked) return
+        e.stopPropagation()
+        setSel([card.id])
+        const s0 = sizeOf(card)
+        const from = { x: e.clientX, y: e.clientY }
+        const ratio = s0.w / s0.h
+        const [mw, mh] = MIN[card.type]
+        grip.setPointerCapture(e.pointerId)
+        const move = (ev) => {
+          const k = board.view.k
+          let w = clamp(s0.w + (ev.clientX - from.x) / k, mw, 1600)
+          let h = clamp(s0.h + (ev.clientY - from.y) / k, mh, 1600)
+          if (card.type === 'image' && !ev.altKey) h = w / ratio
+          if (board.settings.snapGrid && !ev.altKey) {
+            w = Math.round((card.x + w) / GRID) * GRID - card.x
+            h = card.type === 'image' ? w / ratio : Math.round((card.y + h) / GRID) * GRID - card.y
+          }
+          card.w = Math.round(Math.max(mw, w))
+          card.h = Math.round(Math.max(mh, h))
+          place(card)
+          if (card.type === 'shape') renderCard(card)
+          drawLinks()
+          placeFloat()
+          drawMini()
+        }
+        const up = () => {
+          grip.removeEventListener('pointermove', move)
+          grip.removeEventListener('pointerup', up)
+          grip.removeEventListener('pointercancel', up)
+          commit()
+        }
+        grip.addEventListener('pointermove', move)
+        grip.addEventListener('pointerup', up)
+        grip.addEventListener('pointercancel', up)
+      }
+
+      /* ---------- drawing an arrow ---------- */
+      const cardAt = (cx, cy) => {
+        const hit = document.elementFromPoint(cx, cy)?.closest('.bd-card')
+        return hit ? byId(hit.dataset.id) : null
+      }
+      const tempTo = (from, p) => {
+        const c = centerOf(from)
+        const e = edgeToward(from, p.x, p.y)
+        temp.setAttribute('x1', e.x ?? c.x)
+        temp.setAttribute('y1', e.y ?? c.y)
+        temp.setAttribute('x2', p.x)
+        temp.setAttribute('y2', p.y)
+        temp.setAttribute('visibility', 'visible')
+      }
+      /** Let go of an arrow on a card: it joins them; on an empty place: a new card is made there and joined. */
+      const dropArrow = (from, cx, cy) => {
+        temp.setAttribute('visibility', 'hidden')
+        const target = cardAt(cx, cy)
+        if (target && target.id !== from.id) addLink(from.id, target.id)
+        else if (!target) {
+          const p = toWorld(cx, cy)
+          const c = addCard({ type: 'text' }, { x: p.x + 90, y: p.y }, false)
+          addLink(from.id, c.id)
+          startEdit(c)
+        }
+      }
+      const portDown = (e, card, port) => {
+        if (e.button !== 0 || card.locked) return
+        e.stopPropagation()
+        port.setPointerCapture(e.pointerId)
+        const move = (ev) => tempTo(card, toWorld(ev.clientX, ev.clientY))
+        move(e)
+        const up = (ev) => {
+          port.removeEventListener('pointermove', move)
+          port.removeEventListener('pointerup', up)
+          port.removeEventListener('pointercancel', up)
+          dropArrow(card, ev.clientX, ev.clientY)
+        }
+        port.addEventListener('pointermove', move)
+        port.addEventListener('pointerup', up)
+        port.addEventListener('pointercancel', up)
+      }
+      /** "Arrow from here" in a menu: the next click on a card finishes the arrow. */
+      const startArrowMode = (card) => {
+        arrowMode = { from: card }
+        canvas.classList.add('arrowing')
+        placeFloat()
+        tempTo(card, centerOf(card))
+        api.ui.notice(tt('Щёлкните по карточке, куда ведёт стрелка (Esc — отмена)', 'Click the card the arrow goes to (Esc cancels)'), 3500)
+      }
+      const stopArrowMode = () => {
+        arrowMode = null
+        canvas.classList.remove('arrowing')
+        temp.setAttribute('visibility', 'hidden')
+        placeFloat()
+      }
+      const finishArrowMode = (card) => {
+        const from = arrowMode?.from
+        stopArrowMode()
+        if (from && card && from.id !== card.id) addLink(from.id, card.id)
+      }
+
+      /* ---------- arranging ---------- */
+      const toggleLock = (cards) => {
+        const lock = !cards.every((c) => c.locked)
+        for (const c of cards) {
+          c.locked = lock || undefined
+          renderCard(c)
+        }
+        commit()
+        placeFloat()
+      }
+      const setColor = (cards, color) => {
+        for (const c of cards) {
+          c.color = color || undefined
+          renderCard(c)
+        }
+        commit()
+        placeFloat()
+      }
+      const setProp = (cards, key, value) => {
+        for (const c of cards) {
+          if (value === undefined) delete c[key]
+          else c[key] = value
+          renderCard(c)
+        }
+        commit()
+      }
+      const reorder = (cards, mode) => {
+        const ids = new Set(cards.map((c) => c.id))
+        const keep = board.cards.filter((c) => !ids.has(c.id))
+        const moving = board.cards.filter((c) => ids.has(c.id))
+        if (mode === 'front') board.cards = [...keep, ...moving]
+        else if (mode === 'back') board.cards = [...moving, ...keep]
+        else {
+          const i = board.cards.findIndex((c) => ids.has(c.id))
+          const j = board.cards.length - 1 - [...board.cards].reverse().findIndex((c) => ids.has(c.id))
+          const at = mode === 'forward' ? Math.min(keep.length, j + 1 - moving.length + 1) : Math.max(0, i - 1)
+          keep.splice(at, 0, ...moving)
+          board.cards = keep
+        }
+        restack()
+        commit()
+      }
+      const align = (cards, how) => {
+        if (cards.length < 2) return
+        const b = boundsOf(cards)
+        for (const c of cards.filter((x) => !x.locked)) {
+          const s = sizeOf(c)
+          if (how === 'left') c.x = b.x
+          else if (how === 'right') c.x = b.x + b.w - s.w
+          else if (how === 'hcenter') c.x = Math.round(b.x + (b.w - s.w) / 2)
+          else if (how === 'top') c.y = b.y
+          else if (how === 'bottom') c.y = b.y + b.h - s.h
+          else if (how === 'vcenter') c.y = Math.round(b.y + (b.h - s.h) / 2)
+          place(c)
+        }
+        drawLinks()
+        placeFloat()
+        commit()
+      }
+      const distribute = (cards, axis) => {
+        if (cards.length < 3) return
+        const horizontal = axis === 'h'
+        const list = [...cards].sort((a, b) => (horizontal ? a.x - b.x : a.y - b.y))
+        const b = boundsOf(list)
+        const total = list.reduce((n, c) => n + (horizontal ? sizeOf(c).w : sizeOf(c).h), 0)
+        const gap = ((horizontal ? b.w : b.h) - total) / (list.length - 1)
+        let at = horizontal ? b.x : b.y
+        for (const c of list) {
+          if (horizontal) c.x = Math.round(at)
+          else c.y = Math.round(at)
+          at += (horizontal ? sizeOf(c).w : sizeOf(c).h) + gap
+          place(c)
+        }
+        drawLinks()
+        placeFloat()
+        commit()
+      }
+      const sameSize = (cards, dim) => {
+        const first = sizeOf(cards[0])
+        for (const c of cards.slice(1)) {
+          if (dim === 'w' || dim === 'both') c.w = first.w
+          if (dim === 'h' || dim === 'both') c.h = first.h
+          place(c)
+          if (c.type === 'shape') renderCard(c)
+        }
+        drawLinks()
+        commit()
+      }
+      const wrapInFrame = (cards) => {
+        if (!cards.length) return
+        const b = boundsOf(cards)
+        const f = { id: uid(), type: 'frame', x: b.x - 28, y: b.y - 52, w: Math.round(b.w + 56), h: Math.round(b.h + 80), text: '' }
+        board.cards.unshift(f)
+        makeCard(f)
+        setSel([f.id])
+        commit()
+        startEdit(f, 'all')
+      }
+      const fitFrame = (frame) => {
+        const m = membersOf(frame)
+        if (!m.length) return
+        const b = boundsOf(m)
+        frame.x = b.x - 28
+        frame.y = b.y - 52
+        frame.w = Math.round(b.w + 56)
+        frame.h = Math.round(b.h + 80)
+        place(frame)
+        commit()
+      }
+
+      /* ---------- search ---------- */
+      const textOfCard = (c) => [c.text, c.type === 'note' ? nameOf(c.note) : '', c.url, c.src ? nameOf(c.src) : '', c.type === 'note' ? notes.get(c.note)?.excerpt : ''].filter(Boolean).join(' ').toLowerCase()
+      const runSearch = () => {
+        const q = searchInput.value.trim().toLowerCase()
+        hits = q ? board.cards.filter((c) => textOfCard(c).includes(q)) : []
+        hitAt = 0
+        canvas.classList.toggle('searching', !!q)
+        const set = new Set(hits.map((c) => c.id))
+        for (const [id, node] of cardEls) node.classList.toggle('hit', set.has(id))
+        searchCount.textContent = q ? `${hits.length ? hitAt + 1 : 0}/${hits.length}` : ''
+        if (hits.length) {
+          centerOn(hits[0])
+        }
+      }
+      const nextHit = (step) => {
+        if (!hits.length) return
+        hitAt = (hitAt + step + hits.length) % hits.length
+        searchCount.textContent = `${hitAt + 1}/${hits.length}`
+        centerOn(hits[hitAt])
+        setSel([hits[hitAt].id])
+      }
+      const openSearch = () => {
+        searchBox.hidden = false
+        searchInput.focus()
+        searchInput.select()
+      }
+      const closeSearch = () => {
+        searchBox.hidden = true
+        searchInput.value = ''
+        runSearch()
+        canvas.focus()
+      }
+      searchInput.oninput = runSearch
+      searchInput.onkeydown = (e) => {
+        e.stopPropagation()
+        if (e.key === 'Escape') closeSearch()
+        else if (e.key === 'Enter') nextHit(e.shiftKey ? -1 : 1)
+      }
+
+      /* ---------- the minimap ---------- */
+      const drawMini = () => {
+        if (miniFrame || !board) return
+        miniFrame = requestAnimationFrame(() => {
+          miniFrame = 0
+          const ctx = mini.getContext('2d')
+          const W = mini.width
+          const H = mini.height
+          ctx.clearRect(0, 0, W, H)
+          const r = canvas.getBoundingClientRect()
+          const v = board.view
+          const view = { x: -v.x / v.k, y: -v.y / v.k, w: r.width / v.k, h: r.height / v.k }
+          const all = board.cards.length ? boundsOf([...board.cards, { type: 'text', ...view, w: view.w, h: view.h }]) : view
+          const pad = 20
+          const s = Math.min((W - 8) / (all.w + pad), (H - 8) / (all.h + pad))
+          const ox = (W - all.w * s) / 2 - all.x * s
+          const oy = (H - all.h * s) / 2 - all.y * s
+          mini._map = { s, ox, oy }
+          const css = getComputedStyle(mini)
+          for (const c of board.cards) {
+            const q = rectOf(c)
+            ctx.fillStyle = c.type === 'frame' ? css.getPropertyValue('--border-2') : c.color || css.getPropertyValue('--text-3')
+            ctx.globalAlpha = c.type === 'frame' ? 0.5 : sel.has(c.id) ? 1 : 0.7
+            ctx.fillRect(q.x * s + ox, q.y * s + oy, Math.max(2, q.w * s), Math.max(2, q.h * s))
+          }
+          ctx.globalAlpha = 1
+          ctx.strokeStyle = css.getPropertyValue('--accent')
+          ctx.lineWidth = 1.5
+          ctx.strokeRect(view.x * s + ox, view.y * s + oy, view.w * s, view.h * s)
+        })
+      }
+      mini.addEventListener('pointerdown', (e) => {
+        if (!mini._map || !board) return
+        mini.setPointerCapture(e.pointerId)
+        const go = (ev) => {
+          const b = mini.getBoundingClientRect()
+          const { s, ox, oy } = mini._map
+          const wx = ((ev.clientX - b.left) * (mini.width / b.width) - ox) / s
+          const wy = ((ev.clientY - b.top) * (mini.height / b.height) - oy) / s
+          const r = canvas.getBoundingClientRect()
+          board.view.x = r.width / 2 - wx * board.view.k
+          board.view.y = r.height / 2 - wy * board.view.k
           applyView()
+        }
+        go(e)
+        const up = () => {
+          mini.removeEventListener('pointermove', go)
+          mini.removeEventListener('pointerup', up)
+          changed()
+        }
+        mini.addEventListener('pointermove', go)
+        mini.addEventListener('pointerup', up)
+      })
+
+      /* ====================================================================== menus */
+
+      const showMenu = (x, y, items) =>
+        api.ui.popup({
+          x,
+          y,
+          mount: (box, close) => {
+            box.classList.add('bd-menu')
+            box.append(menuList(items, close))
+          }
+        })
+      const menuAtButton = (e, items) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        showMenu(r.left, r.bottom + 6, items)
+      }
+      const menuList = (items, close) => {
+        const list = el('div', { className: 'bd-m' })
+        for (const it of items.filter(Boolean)) {
+          if (it.sep) {
+            list.append(el('div', { className: 'bd-m-sep' }))
+            continue
+          }
+          if (it.colors) {
+            const row = el('div', { className: 'bd-m-colors' })
+            for (const col of COLORS) {
+              const dot = el('button', { className: 'bd-swatch' + (col ? '' : ' none') + (col === (it.colors.current ?? '') ? ' on' : ''), title: col ? col : tt('Без цвета', 'No colour') })
+              dot.style.setProperty('--c', col || 'transparent')
+              dot.onclick = () => {
+                close()
+                it.colors.pick(col)
+              }
+              row.append(dot)
+            }
+            list.append(row)
+            continue
+          }
+          const row = el('div', { className: 'bd-m-item' + (it.disabled ? ' disabled' : '') + (it.danger ? ' danger' : '') })
+          const b = el('button', { className: 'bd-m-row', disabled: !!it.disabled })
+          b.append(
+            el('span', { className: 'bd-m-check', textContent: it.checked ? '✓' : it.icon ?? '' }),
+            el('span', { className: 'bd-m-label', textContent: it.label }),
+            el('span', { className: 'bd-m-hint', textContent: it.children ? '▸' : it.hint ?? '' })
+          )
+          row.append(b)
+          if (it.children) {
+            const sub = el('div', { className: 'bd-m-sub addon-popup-like' })
+            sub.append(menuList(it.children, close))
+            row.append(sub)
+            row.addEventListener('mouseenter', () => {
+              sub.classList.remove('flip', 'up')
+              const r = sub.getBoundingClientRect()
+              if (r.right > window.innerWidth - 6) sub.classList.add('flip')
+              if (r.bottom > window.innerHeight - 6) sub.classList.add('up')
+            })
+          } else if (it.action) {
+            b.onclick = () => {
+              close()
+              it.action()
+            }
+          }
+          list.append(row)
+        }
+        return list
+      }
+
+      const colorMenu = (cards) => [{ colors: { current: cards.length === 1 ? cards[0].color : undefined, pick: (c) => setColor(cards, c) } }]
+
+      const addItems = (at) => [
+        { label: tt('Карточка с текстом', 'Text card'), hint: 'T', action: () => addCard({ type: 'text' }, at) },
+        { label: tt('Стикер', 'Sticky note'), hint: 'S', action: () => addCard({ type: 'sticky', color: STICKY }, at) },
+        { label: tt('Чек-лист', 'Check list'), action: () => addCard({ type: 'todo', text: '[ ] ' }, at) },
+        { label: tt('Заметка из хранилища…', 'Note from the vault…'), action: () => pickNote(at) },
+        { label: tt('Картинка…', 'Picture…'), action: () => pickImages(at) },
+        { label: tt('Ссылка…', 'Link…'), action: () => void askLink(at) },
+        { sep: true },
+        { label: tt('Рамка', 'Frame'), hint: 'F', action: () => addCard({ type: 'frame', text: '' }, at) },
+        {
+          label: tt('Фигура', 'Shape'),
+          children: [
+            { label: tt('Прямоугольник', 'Rectangle'), action: () => addCard({ type: 'shape', shape: 'rect' }, at) },
+            { label: tt('Эллипс', 'Ellipse'), action: () => addCard({ type: 'shape', shape: 'ellipse' }, at) },
+            { label: tt('Ромб', 'Diamond'), action: () => addCard({ type: 'shape', shape: 'diamond' }, at) }
+          ]
+        }
+      ]
+
+      const fontMenu = (cards) => [
+        { label: tt('Мелкий', 'Small'), checked: cards.every((c) => (c.fs ?? 1) === 0), action: () => setProp(cards, 'fs', 0) },
+        { label: tt('Обычный', 'Normal'), checked: cards.every((c) => (c.fs ?? 1) === 1), action: () => setProp(cards, 'fs', undefined) },
+        { label: tt('Крупный', 'Large'), checked: cards.every((c) => c.fs === 2), action: () => setProp(cards, 'fs', 2) },
+        { label: tt('Огромный', 'Huge'), checked: cards.every((c) => c.fs === 3), action: () => setProp(cards, 'fs', 3) }
+      ]
+      const orderMenu = (cards) => [
+        { label: tt('На передний план', 'Bring to front'), action: () => reorder(cards, 'front') },
+        { label: tt('Вперёд', 'Forward'), action: () => reorder(cards, 'forward') },
+        { label: tt('Назад', 'Backward'), action: () => reorder(cards, 'back-one') },
+        { label: tt('На задний план', 'Send to back'), action: () => reorder(cards, 'back') }
+      ]
+      const arrangeMenu = (cards) => [
+        {
+          label: tt('Выровнять', 'Align'),
+          disabled: cards.length < 2,
+          children: [
+            { label: tt('По левому краю', 'Left'), action: () => align(cards, 'left') },
+            { label: tt('По центру', 'Centre horizontally'), action: () => align(cards, 'hcenter') },
+            { label: tt('По правому краю', 'Right'), action: () => align(cards, 'right') },
+            { sep: true },
+            { label: tt('По верхнему краю', 'Top'), action: () => align(cards, 'top') },
+            { label: tt('По середине', 'Centre vertically'), action: () => align(cards, 'vcenter') },
+            { label: tt('По нижнему краю', 'Bottom'), action: () => align(cards, 'bottom') }
+          ]
+        },
+        {
+          label: tt('Распределить', 'Distribute'),
+          disabled: cards.length < 3,
+          children: [
+            { label: tt('По горизонтали', 'Horizontally'), action: () => distribute(cards, 'h') },
+            { label: tt('По вертикали', 'Vertically'), action: () => distribute(cards, 'v') }
+          ]
+        },
+        {
+          label: tt('Одинаковый размер', 'Same size'),
+          disabled: cards.length < 2,
+          children: [
+            { label: tt('Ширина', 'Width'), action: () => sameSize(cards, 'w') },
+            { label: tt('Высота', 'Height'), action: () => sameSize(cards, 'h') },
+            { label: tt('Ширина и высота', 'Both'), action: () => sameSize(cards, 'both') }
+          ]
+        }
+      ]
+
+      const cardMenu = (card) => {
+        const items = []
+        const one = [card]
+        if (card.type === 'note') {
+          items.push({ label: tt('Открыть заметку', 'Open the note'), hint: tt('двойной клик', 'double click'), action: () => api.vault.open(card.note) })
+          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void window.syntex.fs.reveal(card.note) })
+          items.push({ label: tt('Скопировать имя', 'Copy the name'), action: () => void navigator.clipboard.writeText(nameOf(card.note)).catch(() => undefined) })
+        } else if (card.type === 'link') {
+          items.push({ label: tt('Открыть в браузере', 'Open in the browser'), hint: tt('двойной клик', 'double click'), action: () => window.open(normUrl(card.url)) })
+          items.push({ label: tt('Скопировать адрес', 'Copy the address'), action: () => void navigator.clipboard.writeText(card.url).catch(() => undefined) })
+          items.push({
+            label: tt('Изменить…', 'Edit…'),
+            action: async () => {
+              const v = await api.ui.prompt(tt('Адрес ссылки', 'Link address'), card.url)
+              if (v?.trim()) setProp(one, 'url', normUrl(v.trim()))
+            }
+          })
+          items.push({
+            label: tt('Название…', 'Title…'),
+            action: async () => {
+              const v = await api.ui.prompt(tt('Название ссылки', 'Title of the link'), card.text ?? '')
+              if (v !== null) setProp(one, 'text', v.trim() || undefined)
+            }
+          })
+        } else if (card.type === 'image') {
+          items.push({ label: tt('Открыть картинку', 'Open the picture'), hint: tt('двойной клик', 'double click'), action: () => window.open(urlOf(card.src)) })
+          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void window.syntex.fs.reveal(card.src) })
+          items.push({
+            label: tt('Исходный размер', 'Original size'),
+            action: () => {
+              const img = new Image()
+              img.onload = () => {
+                card.w = img.naturalWidth
+                card.h = img.naturalHeight
+                place(card)
+                drawLinks()
+                commit()
+              }
+              img.src = urlOf(card.src)
+            }
+          })
+        } else if (card.type === 'frame') {
+          items.push({ label: tt('Название…', 'Name…'), hint: tt('двойной клик', 'double click'), action: () => startEdit(card, 'all') })
+          items.push({ label: tt('Подогнать под содержимое', 'Fit to the contents'), disabled: !membersOf(card).length, action: () => fitFrame(card) })
+          items.push({
+            label: tt('Выделить содержимое', 'Select the contents'),
+            disabled: !membersOf(card).length,
+            action: () => setSel(membersOf(card).map((c) => c.id))
+          })
+          items.push({ label: tt('Приблизить к рамке', 'Zoom to the frame'), action: () => fitRect(rectOf(card), 2) })
+        } else {
+          items.push({ label: tt('Изменить текст', 'Edit text'), hint: tt('двойной клик', 'double click'), action: () => startEdit(card) })
+        }
+        if (card.type === 'shape') {
+          items.push({
+            label: tt('Форма', 'Shape'),
+            children: ['rect', 'ellipse', 'diamond'].map((s) => ({
+              label: { rect: tt('Прямоугольник', 'Rectangle'), ellipse: tt('Эллипс', 'Ellipse'), diamond: tt('Ромб', 'Diamond') }[s],
+              checked: (card.shape ?? 'rect') === s,
+              action: () => setProp(one, 'shape', s)
+            }))
+          })
+        }
+        items.push({ sep: true })
+        items.push({ label: tt('Цвет', 'Colour'), children: colorMenu(one) })
+        if (['text', 'sticky', 'shape', 'todo', 'note'].includes(card.type)) items.push({ label: tt('Размер текста', 'Text size'), children: fontMenu(one) })
+        if (card.type === 'text') items.push({ label: tt('Превратить в стикер', 'Make it a sticky note'), action: () => ((card.type = 'sticky'), (card.color ??= STICKY), rebuildOne(card)) })
+        if (card.type === 'sticky') items.push({ label: tt('Превратить в карточку', 'Make it a plain card'), action: () => ((card.type = 'text'), rebuildOne(card)) })
+        items.push({ sep: true })
+        items.push({ label: tt('Стрелка отсюда', 'Arrow from here'), hint: 'A', action: () => startArrowMode(card) })
+        items.push({ label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() })
+        items.push({ label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() })
+        items.push({ label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() })
+        items.push({ label: tt('Порядок', 'Order'), children: orderMenu(one) })
+        items.push({ label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(one) })
+        items.push({ label: card.locked ? tt('Открепить', 'Unlock') : tt('Закрепить', 'Lock'), action: () => toggleLock(one) })
+        items.push({ sep: true })
+        if (card.type === 'frame') {
+          items.push({ label: tt('Удалить рамку', 'Delete the frame'), hint: 'Del', danger: true, action: () => removeSelected() })
+          items.push({ label: tt('Удалить рамку с содержимым', 'Delete the frame with its contents'), danger: true, action: () => removeFrameWithContents(card) })
+        } else items.push({ label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() })
+        return items
+      }
+      /** The kind of a card changed: it is drawn again. */
+      const rebuildOne = (card) => {
+        cardEls.get(card.id)?.remove()
+        cardEls.delete(card.id)
+        makeCard(card)
+        restack()
+        commit()
+      }
+
+      const multiMenu = () => {
+        const cards = selected()
+        return [
+          { label: tt('Цвет', 'Colour'), children: colorMenu(cards) },
+          ...arrangeMenu(cards),
+          { label: tt('Порядок', 'Order'), children: orderMenu(cards) },
+          { sep: true },
+          { label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(cards) },
+          { label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() },
+          { label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() },
+          { label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() },
+          { label: cards.every((c) => c.locked) ? tt('Открепить всё', 'Unlock all') : tt('Закрепить всё', 'Lock all'), action: () => toggleLock(cards) },
+          { label: tt('Приблизить к выделенному', 'Zoom to the selection'), action: () => fitSelection() },
+          { sep: true },
+          { label: tt('Удалить', 'Delete') + ` (${cards.length})`, hint: 'Del', danger: true, action: () => removeSelected() }
+        ]
+      }
+
+      const linkMenu = (l) => [
+        { label: tt('Подпись…', 'Label…'), hint: tt('двойной клик', 'double click'), action: () => void editLabel(l) },
+        {
+          label: tt('Линия', 'Line'),
+          children: [
+            { label: tt('Сплошная', 'Solid'), checked: (l.style ?? 'solid') === 'solid', action: () => linkProp(l, 'style', 'solid') },
+            { label: tt('Пунктир', 'Dashed'), checked: l.style === 'dashed', action: () => linkProp(l, 'style', 'dashed') },
+            { label: tt('Точки', 'Dotted'), checked: l.style === 'dotted', action: () => linkProp(l, 'style', 'dotted') }
+          ]
+        },
+        {
+          label: tt('Концы', 'Ends'),
+          children: [
+            { label: tt('Стрелка на конце', 'Arrow at the end'), checked: (l.head ?? 'end') === 'end', action: () => linkProp(l, 'head', 'end') },
+            { label: tt('Стрелки с обеих сторон', 'Arrows at both ends'), checked: l.head === 'both', action: () => linkProp(l, 'head', 'both') },
+            { label: tt('Без стрелок', 'No arrows'), checked: l.head === 'none', action: () => linkProp(l, 'head', 'none') }
+          ]
+        },
+        {
+          label: tt('Форма', 'Shape'),
+          children: [
+            { label: tt('Прямая', 'Straight'), checked: !l.curve, action: () => linkProp(l, 'curve', undefined) },
+            { label: tt('Изогнутая', 'Curved'), checked: !!l.curve, action: () => linkProp(l, 'curve', true) }
+          ]
+        },
+        { label: tt('Цвет', 'Colour'), children: [{ colors: { current: l.color, pick: (c) => linkProp(l, 'color', c || undefined) } }] },
+        { label: tt('Развернуть', 'Reverse'), action: () => reverseLink(l) },
+        { sep: true },
+        { label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() }
+      ]
+      const linkProp = (l, key, value) => {
+        if (value === undefined) delete l[key]
+        else l[key] = value
+        drawLinks()
+        commit()
+      }
+
+      const viewMenu = () => [
+        { label: tt('Вписать всё', 'Fit everything'), hint: 'Shift+1', action: () => fit() },
+        { label: tt('Масштаб 100%', 'Zoom 100%'), hint: 'Ctrl+0', action: () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1) },
+        { label: tt('Приблизить', 'Zoom in'), hint: 'Ctrl+=', action: () => zoomBy(1.25) },
+        { label: tt('Отдалить', 'Zoom out'), hint: 'Ctrl+−', action: () => zoomBy(1 / 1.25) },
+        { sep: true },
+        {
+          label: tt('Сетка', 'Grid'),
+          children: [
+            { label: tt('Точки', 'Dots'), checked: board.settings.grid === 'dots', action: () => setSetting('grid', 'dots') },
+            { label: tt('Линии', 'Lines'), checked: board.settings.grid === 'lines', action: () => setSetting('grid', 'lines') },
+            { label: tt('Без сетки', 'None'), checked: board.settings.grid === 'none', action: () => setSetting('grid', 'none') }
+          ]
+        },
+        { label: tt('Прилипать к сетке', 'Snap to the grid'), checked: !!board.settings.snapGrid, action: () => setSetting('snapGrid', !board.settings.snapGrid) },
+        { label: tt('Направляющие по краям карточек', 'Guides to the edges of cards'), checked: board.settings.guides !== false, action: () => setSetting('guides', board.settings.guides === false) },
+        { label: tt('Мини-карта', 'Minimap'), checked: !mini.hidden, action: () => (mini.hidden = !mini.hidden) }
+      ]
+      const setSetting = (key, value) => {
+        board.settings[key] = value
+        applyView()
+        changed()
+      }
+
+      const canvasMenu = (at) => [
+        { label: tt('Добавить', 'Add'), children: addItems(at) },
+        { label: tt('Вставить', 'Paste'), hint: 'Ctrl+V', action: () => void pasteHere(at) },
+        { label: tt('Выбрать всё', 'Select all'), hint: 'Ctrl+A', disabled: !board.cards.length, action: () => setSel(board.cards.map((c) => c.id)) },
+        { sep: true },
+        { label: tt('Вид', 'View'), children: viewMenu() },
+        { label: tt('Найти на доске…', 'Find on the board…'), hint: 'Ctrl+F', action: () => openSearch() },
+        { label: tt('Экспорт', 'Export'), children: exportMenu() },
+        { sep: true },
+        { label: tt('Отменить', 'Undo'), hint: 'Ctrl+Z', disabled: hist.i <= 0, action: () => undo() },
+        { label: tt('Повторить', 'Redo'), hint: 'Ctrl+Y', disabled: hist.i >= hist.stack.length - 1, action: () => redo() }
+      ]
+
+      const toMarkdown = () => {
+        const lines = [`# ${nameOf(path)}`, '']
+        const label = (c) =>
+          c.type === 'note' ? `[[${nameOf(c.note)}]]` : c.type === 'link' ? `[${c.text || hostOf(c.url)}](${c.url})` : c.type === 'image' ? `![[${nameOf(c.src)}]]` : (c.text ?? '').replace(/\n+/g, ' ').trim() || '…'
+        const frames = board.cards.filter((c) => c.type === 'frame')
+        const inFrame = new Set()
+        for (const f of frames) {
+          lines.push(`## ${f.text || tt('Рамка', 'Frame')}`, '')
+          for (const m of membersOf(f).filter((c) => c.type !== 'frame').sort((a, b) => a.y - b.y || a.x - b.x)) {
+            inFrame.add(m.id)
+            lines.push(m.type === 'todo' ? (m.text ?? '').split('\n').map((l) => '- ' + (l || '[ ]')).join('\n') : `- ${label(m)}`)
+          }
+          lines.push('')
+        }
+        const rest = board.cards.filter((c) => c.type !== 'frame' && !inFrame.has(c.id)).sort((a, b) => a.y - b.y || a.x - b.x)
+        if (rest.length) {
+          if (frames.length) lines.push(`## ${tt('Остальное', 'The rest')}`, '')
+          for (const c of rest) lines.push(c.type === 'todo' ? (c.text ?? '').split('\n').map((l) => '- ' + (l || '[ ]')).join('\n') : `- ${label(c)}`)
+          lines.push('')
+        }
+        if (board.links.length) {
+          lines.push(`## ${tt('Связи', 'Links')}`, '')
+          for (const l of board.links) {
+            const a = byId(l.from)
+            const b = byId(l.to)
+            if (a && b) lines.push(`- ${label(a)} ${l.head === 'none' ? '—' : l.head === 'both' ? '↔' : '→'} ${label(b)}${l.label ? ` (${l.label})` : ''}`)
+          }
+          lines.push('')
+        }
+        return lines.join('\n')
+      }
+      const exportMenu = () => [
+        {
+          label: tt('Скопировать как Markdown', 'Copy as Markdown'),
+          action: async () => {
+            try {
+              await navigator.clipboard.writeText(toMarkdown())
+              api.ui.notice(tt('Скопировано', 'Copied'))
+            } catch {
+              api.ui.notice(tt('Не удалось скопировать', 'Could not copy'))
+            }
+          }
+        },
+        {
+          label: tt('Сохранить как заметку', 'Save as a note'),
+          action: async () => {
+            const base = `${nameOf(path)} (${tt('конспект', 'outline')})`
+            let p = base + '.md'
+            for (let i = 2; await api.vault.exists(p); i++) p = `${base} ${i}.md`
+            await api.vault.write(p, toMarkdown(), true)
+            api.vault.open(p)
+          }
+        }
+      ]
+
+      /* ---------- the list of boards and their menu ---------- */
+      const fillSelect = () => {
+        const paths = boardPaths()
+        select.replaceChildren(...paths.map((p) => el('option', { value: p, textContent: nameOf(p) })))
+        if (path && paths.includes(path)) select.value = path
+        select.hidden = !paths.length
+        return paths
+      }
+      const createBoard = async () => {
+        const raw = await api.ui.prompt(tt('Название доски', 'Name of the board'), '')
+        const name = raw?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
+        if (!name) return null
+        // (writing a note does not make its folder: the first board makes "Boards")
+        if (!(await api.vault.exists(FOLDER))) await window.syntex.fs.createFolder('', FOLDER)
+        const taken = new Set(boardPaths())
+        let next = `${FOLDER}/${name}.md`
+        for (let i = 2; taken.has(next); i++) next = `${FOLDER}/${name} ${i}.md`
+        await api.vault.write(next, serialize(nameOf(next), newBoard()), true)
+        fillSelect()
+        await openPath(next)
+        select.value = next
+        return next
+      }
+      const boardMenu = () => [
+        { label: tt('Новая доска…', 'New board…'), action: () => void createBoard() },
+        { sep: true },
+        {
+          label: tt('Переименовать…', 'Rename…'),
+          disabled: !path,
+          action: async () => {
+            const v = await api.ui.prompt(tt('Новое название', 'New name'), nameOf(path))
+            const name = v?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim()
+            if (!name || name === nameOf(path)) return
+            await write()
+            try {
+              const next = await window.syntex.fs.rename(path, name)
+              path = next
+              api.data.set({ ...data(), last: next })
+              await new Promise((r) => setTimeout(r, 300))
+              fillSelect()
+              select.value = next
+            } catch (e) {
+              api.ui.notice(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e), 6000)
+            }
+          }
+        },
+        {
+          label: tt('Дублировать доску', 'Duplicate the board'),
+          disabled: !path,
+          action: async () => {
+            await write()
+            const copy = await window.syntex.fs.duplicate(path)
+            await new Promise((r) => setTimeout(r, 300))
+            fillSelect()
+            await openPath(copy)
+            select.value = copy
+          }
+        },
+        { label: tt('Открыть как заметку', 'Open as a note'), disabled: !path, action: () => api.vault.open(path) },
+        { label: tt('Показать в проводнике', 'Show in Explorer'), disabled: !path, action: () => void window.syntex.fs.reveal(path) },
+        { label: tt('Экспорт', 'Export'), disabled: !board, children: exportMenu() },
+        { sep: true },
+        {
+          label: tt('Удалить доску…', 'Delete the board…'),
+          danger: true,
+          disabled: !path,
+          action: async () => {
+            if (!(await api.ui.confirm(tt('Удалить доску', 'Delete the board'), tt(`«${nameOf(path)}» уйдёт в корзину.`, `"${nameOf(path)}" goes to the recycle bin.`), tt('Удалить', 'Delete')))) return
+            dirty = false
+            const gone = path
+            await window.syntex.fs.trash(gone)
+            await new Promise((r) => setTimeout(r, 400))
+            const left = fillSelect().filter((p) => p !== gone)
+            await openPath(left[0] ?? '')
+            fillSelect()
+          }
+        }
+      ]
+
+      /* ---------- picking a note ---------- */
+      const pickNote = (at) => {
+        const p = at ? toScreen(at.x, at.y) : (() => { const r = canvas.getBoundingClientRect(); return { x: r.left + r.width / 2 - 130, y: r.top + 90 } })()
+        api.ui.popup({
+          x: p.x,
+          y: p.y,
+          mount: (box, close) => {
+            const input = el('input', { className: 'bd-find', placeholder: tt('Найти заметку…', 'Find a note…'), spellcheck: false })
+            const list = el('div', { className: 'bd-found' })
+            const render = () => {
+              const q = input.value.trim().toLowerCase()
+              const found = api.vault
+                .list()
+                .filter((n) => !n.startsWith(FOLDER + '/') && (!q || n.toLowerCase().includes(q)))
+                .slice(0, 40)
+              list.replaceChildren(
+                ...(found.length
+                  ? found.map((n) => {
+                      const b = el('button', { className: 'bd-found-row', textContent: n.replace(/\.md$/i, '') })
+                      b.onclick = () => {
+                        close()
+                        addCard({ type: 'note', note: n }, at, false)
+                      }
+                      return b
+                    })
+                  : [el('div', { className: 'bd-found-none', textContent: tt('Ничего не найдено', 'Nothing found') })])
+              )
+            }
+            input.oninput = render
+            input.onkeydown = (e) => e.key === 'Enter' && list.firstChild?.click?.()
+            box.append(input, list)
+            render()
+            requestAnimationFrame(() => input.focus())
+          }
+        })
+      }
+
+      /* ====================================================================== the canvas */
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!board) return
+        mouse = toWorld(e.clientX, e.clientY)
+        if (arrowMode) tempTo(arrowMode.from, mouse)
+      })
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search')) return
+        canvas.focus()
+        if (arrowMode) {
+          // a click on a card is handled by the card; here it was an empty place
+          if (e.target.closest('.bd-card')) return
+          const from = arrowMode.from
+          stopArrowMode()
+          const p = toWorld(e.clientX, e.clientY)
+          const c = addCard({ type: 'text' }, { x: p.x + 90, y: p.y }, false)
+          addLink(from.id, c.id)
+          startEdit(c)
+          return
+        }
+        const onLink = e.target.closest('.bd-link')
+        if (onLink && e.button === 0) {
+          e.stopPropagation()
+          setSel([], onLink.dataset.id)
+          return
+        }
+        const pan = e.button === 1 || (e.button === 0 && (spaceDown || tool === 'hand'))
+        if (e.button !== 0 && !pan) return
+        if (pan) {
+          e.preventDefault()
+          const from = { x: e.clientX, y: e.clientY, vx: board.view.x, vy: board.view.y }
+          canvas.setPointerCapture(e.pointerId)
+          canvas.classList.add('panning')
+          const move = (ev) => {
+            board.view.x = from.vx + ev.clientX - from.x
+            board.view.y = from.vy + ev.clientY - from.y
+            applyView()
+          }
+          const up = () => {
+            canvas.removeEventListener('pointermove', move)
+            canvas.removeEventListener('pointerup', up)
+            canvas.removeEventListener('pointercancel', up)
+            canvas.classList.remove('panning')
+            changed()
+          }
+          canvas.addEventListener('pointermove', move)
+          canvas.addEventListener('pointerup', up)
+          canvas.addEventListener('pointercancel', up)
+          return
+        }
+        // a frame dragged over an empty place: the cards in it are chosen
+        const add = e.shiftKey || e.ctrlKey || e.metaKey
+        const before = new Set(sel)
+        if (!add) setSel([])
+        const r = canvas.getBoundingClientRect()
+        const from = { x: e.clientX - r.left, y: e.clientY - r.top }
+        canvas.setPointerCapture(e.pointerId)
+        let moved = false
+        const move = (ev) => {
+          const x = ev.clientX - r.left
+          const y = ev.clientY - r.top
+          if (!moved && Math.hypot(x - from.x, y - from.y) < 4) return
+          moved = true
+          band.hidden = false
+          Object.assign(band.style, { left: Math.min(x, from.x) + 'px', top: Math.min(y, from.y) + 'px', width: Math.abs(x - from.x) + 'px', height: Math.abs(y - from.y) + 'px' })
+          const a = toWorld(r.left + Math.min(x, from.x), r.top + Math.min(y, from.y))
+          const b = toWorld(r.left + Math.max(x, from.x), r.top + Math.max(y, from.y))
+          const inside = board.cards.filter((c) => {
+            const q = rectOf(c)
+            // a frame is chosen only when the band takes all of it; the rest when the band touches them
+            return c.type === 'frame' ? q.x >= a.x && q.y >= a.y && q.x + q.w <= b.x && q.y + q.h <= b.y : q.x < b.x && q.x + q.w > a.x && q.y < b.y && q.y + q.h > a.y
+          })
+          sel = new Set([...(add ? before : []), ...inside.map((c) => c.id)])
+          for (const [id, node] of cardEls) node.classList.toggle('on', sel.has(id))
         }
         const up = () => {
           canvas.removeEventListener('pointermove', move)
           canvas.removeEventListener('pointerup', up)
           canvas.removeEventListener('pointercancel', up)
-          canvas.classList.remove('panning')
-          if (board.view.x !== from.vx || board.view.y !== from.vy) changed()
+          band.hidden = true
+          refreshSel()
         }
         canvas.addEventListener('pointermove', move)
         canvas.addEventListener('pointerup', up)
         canvas.addEventListener('pointercancel', up)
       })
+
       canvas.addEventListener(
         'wheel',
         (e) => {
           if (!board) return
           e.preventDefault()
           const r = canvas.getBoundingClientRect()
-          const k0 = board.view.k
-          const k = clamp(k0 * Math.exp(-e.deltaY * 0.0015), 0.2, 3)
-          const px = e.clientX - r.left
-          const py = e.clientY - r.top
-          board.view.x = px - ((px - board.view.x) * k) / k0
-          board.view.y = py - ((py - board.view.y) * k) / k0
-          board.view.k = k
-          applyView()
-          clearTimeout(wheelTimer)
-          wheelTimer = setTimeout(changed, 400)
+          if (e.shiftKey) {
+            board.view.x -= e.deltaY
+            applyView()
+          } else zoomAt(e.clientX - r.left, e.clientY - r.top, board.view.k * Math.exp(-e.deltaY * 0.0015))
         },
         { passive: false }
       )
-      let wheelTimer = null
+
       canvas.addEventListener('dblclick', (e) => {
-        if (!board || broken || e.target.closest('.bd-card')) return
-        addCard({ text: '' }, toWorld(e.clientX, e.clientY))
-      })
-      canvas.addEventListener('keydown', (e) => {
-        if (editing || e.target.closest('textarea')) return
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          e.preventDefault()
-          removeSelected()
-        } else if (e.key === 'Escape') select_(null)
+        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search')) return
+        const l = e.target.closest('.bd-link')
+        if (l) {
+          const link = board.links.find((x) => x.id === l.dataset.id)
+          if (link) void editLabel(link)
+          return
+        }
+        addCard({ type: 'text' }, toWorld(e.clientX, e.clientY))
       })
 
-      /* --- loading a board --- */
+      canvas.addEventListener('contextmenu', (e) => {
+        if (!board || e.target.closest('.bd-search, .bd-mini')) return
+        e.preventDefault()
+        if (broken) return
+        const at = toWorld(e.clientX, e.clientY)
+        mouse = at
+        const node = e.target.closest('.bd-card')
+        const linkEl = e.target.closest('.bd-link')
+        if (node) {
+          const card = byId(node.dataset.id)
+          if (!card) return
+          if (!sel.has(card.id)) setSel([card.id])
+          showMenu(e.clientX, e.clientY, sel.size > 1 ? multiMenu() : cardMenu(card))
+        } else if (linkEl) {
+          const l = board.links.find((x) => x.id === linkEl.dataset.id)
+          if (l) {
+            setSel([], l.id)
+            showMenu(e.clientX, e.clientY, linkMenu(l))
+          }
+        } else {
+          if (sel.size > 1 || sel.size === 1) setSel([])
+          showMenu(e.clientX, e.clientY, canvasMenu(at))
+        }
+      })
+
+      // pictures dropped from the desktop
+      canvas.addEventListener('dragover', (e) => {
+        if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+      })
+      canvas.addEventListener('drop', async (e) => {
+        if (!board || broken) return
+        const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'))
+        if (!files.length) return
+        e.preventDefault()
+        const at = toWorld(e.clientX, e.clientY)
+        let i = 0
+        for (const f of files) await addImage(f.name || 'image.png', new Uint8Array(await f.arrayBuffer()), { x: at.x + i++ * 30, y: at.y + i * 30 })
+      })
+
+      canvas.addEventListener('keydown', (e) => {
+        if (!board || editing || e.target.closest('textarea, input')) return
+        const ctrl = e.ctrlKey || e.metaKey
+        const code = e.code
+        if (code === 'Space') {
+          e.preventDefault()
+          if (!spaceDown) {
+            spaceDown = true
+            canvas.classList.add('hand')
+          }
+          return
+        }
+        if (ctrl && code === 'KeyA') {
+          e.preventDefault()
+          setSel(board.cards.map((c) => c.id))
+        } else if (ctrl && code === 'KeyC') {
+          e.preventDefault()
+          void copySel()
+        } else if (ctrl && code === 'KeyX') {
+          e.preventDefault()
+          void cutSel()
+        } else if (ctrl && code === 'KeyV') {
+          e.preventDefault()
+          void pasteHere()
+        } else if (ctrl && e.shiftKey && code === 'KeyD') {
+          e.preventDefault()
+          duplicate()
+        } else if (ctrl && code === 'KeyZ') {
+          e.preventDefault()
+          if (e.shiftKey) redo()
+          else undo()
+        } else if (ctrl && code === 'KeyY') {
+          e.preventDefault()
+          redo()
+        } else if (ctrl && code === 'KeyG') {
+          e.preventDefault()
+          wrapInFrame(selected())
+        } else if (ctrl && code === 'KeyF') {
+          e.preventDefault()
+          openSearch()
+        } else if (ctrl && (code === 'Equal' || code === 'NumpadAdd')) {
+          e.preventDefault()
+          zoomBy(1.25)
+        } else if (ctrl && (code === 'Minus' || code === 'NumpadSubtract')) {
+          e.preventDefault()
+          zoomBy(1 / 1.25)
+        } else if (ctrl && code === 'Digit0') {
+          e.preventDefault()
+          zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1)
+        } else if (e.shiftKey && code === 'Digit1') {
+          e.preventDefault()
+          fit()
+        } else if (e.shiftKey && code === 'Digit2') {
+          e.preventDefault()
+          fitSelection()
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault()
+          removeSelected()
+        } else if (e.key === 'Escape') {
+          if (arrowMode) stopArrowMode()
+          else if (!searchBox.hidden) closeSearch()
+          else setSel([])
+        } else if (e.key.startsWith('Arrow') && sel.size) {
+          e.preventDefault()
+          const step = e.shiftKey ? 10 : 1
+          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+          const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+          for (const c of withMembers(selected()).filter((x) => !x.locked)) {
+            c.x += dx
+            c.y += dy
+            place(c)
+          }
+          drawLinks()
+          placeFloat()
+          clearTimeout(keyTimer)
+          keyTimer = setTimeout(commit, 300)
+        } else if (!ctrl && !e.altKey) {
+          if (code === 'KeyT') addCard({ type: 'text' }, mouse)
+          else if (code === 'KeyS') addCard({ type: 'sticky', color: STICKY }, mouse)
+          else if (code === 'KeyF') addCard({ type: 'frame', text: '' }, mouse)
+          else if (code === 'KeyA' && sel.size === 1) startArrowMode(selected()[0])
+          else if (code === 'KeyH') setTool('hand')
+          else if (code === 'KeyV') setTool('select')
+        }
+      })
+      let keyTimer = null
+      canvas.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+          spaceDown = false
+          canvas.classList.remove('hand')
+        }
+      })
+      const setTool = (t) => {
+        tool = t
+        canvas.classList.toggle('hand', t === 'hand')
+        syncToolbar()
+      }
+
+      /* ---------- loading a board ---------- */
       const show = (text) => {
-        cardEls.clear()
-        cardLayer.replaceChildren()
-        selected = null
+        notes.clear()
+        sel = new Set()
+        selLink = null
         editing = null
-        // (an empty note in the folder is a new board; a note with other text and no board in it is left alone)
-        const parsed = text === null || !text.trim() ? emptyBoard() : parse(text)
+        arrowMode = null
+        const parsed = text === null || !text.trim() ? newBoard() : parse(text)
         broken = !parsed
-        board = parsed ?? emptyBoard()
-        for (const card of board.cards) makeCard(card)
+        board = parsed ?? newBoard()
+        hist = { stack: [snapshot()], i: 0 }
+        rebuild()
         applyView()
-        drawLinks()
-        select_(null)
         hint.hidden = board.cards.length > 0 && !broken
-        hint.textContent = broken ? t().broken : t().emptyBoard
+        hint.textContent = broken
+          ? tt('Данные доски повреждены, доска не изменяется: исправьте её заметку или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its note or make a new board.')
+          : tt(
+              'Двойной клик по пустому месту — новая карточка. Правая кнопка мыши — меню. Колесо — масштаб, пробел или средняя кнопка — двигать поле. Кружок у края карточки тянется к другой карточке — так появляется стрелка.',
+              'Double click an empty place for a new card. Right click for the menu. The wheel zooms; Space or the middle button moves the field. Drag the dot at the edge of a card to another card to make an arrow.'
+            )
         canvas.classList.toggle('readonly', broken)
+        syncToolbar()
       }
 
       const openPath = async (next) => {
@@ -519,11 +2007,14 @@ export default {
         path = next
         if (!path) {
           board = null
-          cardLayer.replaceChildren()
           cardEls.clear()
+          frameLayer.replaceChildren()
+          cardLayer.replaceChildren()
           linkLayer.replaceChildren()
+          floatBar.hidden = true
           hint.hidden = false
-          hint.textContent = t().emptyHint
+          hint.textContent = tt('Доска — это поле с карточками и стрелками. Создайте первую.', 'A board is a field with cards and arrows. Make the first one.')
+          syncToolbar()
           return
         }
         api.data.set({ ...data(), last: path })
@@ -537,106 +2028,36 @@ export default {
         if (pendingNotes.length && controller) controller.addNotes(pendingNotes.splice(0))
       }
 
-      const fillSelect = () => {
-        const paths = boardPaths()
-        select.replaceChildren(...paths.map((p) => el('option', { value: p, textContent: nameOf(p) })))
-        if (path && paths.includes(path)) select.value = path
-        select.hidden = !paths.length
-        return paths
+      /* ---------- the toolbar ---------- */
+      const undoBtn = btn('↶', undo, tt('Отменить (Ctrl+Z)', 'Undo (Ctrl+Z)'), 'bd-icon')
+      const redoBtn = btn('↷', redo, tt('Повторить (Ctrl+Y)', 'Redo (Ctrl+Y)'), 'bd-icon')
+      const handBtn = btn('✋', () => setTool(tool === 'hand' ? 'select' : 'hand'), tt('Рука: двигать поле (H)', 'Hand: move the field (H)'), 'bd-icon')
+      const addBtn = btn('+ ' + tt('Добавить', 'Add'), (e) => board && !broken && menuAtButton(e, addItems(null)))
+      const moreBtn = btn('⋯', (e) => menuAtButton(e, boardMenu()), tt('Меню доски', 'Board menu'), 'bd-icon')
+      const viewBtn = btn(tt('Вид', 'View'), (e) => board && menuAtButton(e, viewMenu()))
+      const findBtn = btn('🔍', () => board && openSearch(), tt('Найти на доске (Ctrl+F)', 'Find on the board (Ctrl+F)'), 'bd-icon')
+      const syncToolbar = () => {
+        undoBtn.disabled = hist.i <= 0
+        redoBtn.disabled = hist.i >= hist.stack.length - 1
+        handBtn.classList.toggle('on', tool === 'hand')
+        for (const b of [addBtn, viewBtn, findBtn, handBtn]) b.disabled = !board || broken
       }
-
-      const createBoard = async () => {
-        const raw = await api.ui.prompt(t().namePrompt, '')
-        const name = raw?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
-        if (!name) return null
-        // (writing a note does not make its folder: the first board makes "Boards")
-        if (!(await api.vault.exists(FOLDER))) await window.syntex.fs.createFolder('', FOLDER)
-        const taken = new Set(boardPaths())
-        let next = `${FOLDER}/${name}.md`
-        for (let i = 2; taken.has(next); i++) next = `${FOLDER}/${name} ${i}.md`
-        await api.vault.write(next, serialize(nameOf(next), emptyBoard()), true)
-        fillSelect()
-        await openPath(next)
-        select.value = next
-        return next
-      }
-
-      /* --- the toolbar --- */
-      const pickNote = (button) => {
-        const r = button.getBoundingClientRect()
-        api.ui.popup({
-          x: r.left,
-          y: r.bottom + 6,
-          mount: (box, close) => {
-            const input = el('input', { className: 'bd-find', placeholder: t().pickNote, spellcheck: false })
-            const list = el('div', { className: 'bd-found' })
-            const render = () => {
-              const q = input.value.trim().toLowerCase()
-              const found = api.vault
-                .list()
-                .filter((p) => !p.startsWith(FOLDER + '/') && (!q || p.toLowerCase().includes(q)))
-                .slice(0, 40)
-              list.replaceChildren(
-                ...(found.length
-                  ? found.map((p) => {
-                      const b = el('button', { className: 'bd-found-row', textContent: p.replace(/\.md$/i, '') })
-                      b.onclick = () => {
-                        close()
-                        addCard({ note: p })
-                      }
-                      return b
-                    })
-                  : [el('div', { className: 'bd-found-none', textContent: t().nothing })])
-              )
-            }
-            input.oninput = render
-            input.onkeydown = (e) => e.key === 'Enter' && list.firstChild?.click?.()
-            box.append(input, list)
-            render()
-            requestAnimationFrame(() => input.focus())
-          }
-        })
-      }
-
       select.onchange = () => void openPath(select.value)
-      for (const color of COLORS) {
-        const s = el('button', { className: 'bd-swatch' + (color ? '' : ' none'), title: t().color })
-        s.dataset.color = color
-        s.style.setProperty('--c', color || 'transparent')
-        s.onclick = () => {
-          const card = selected?.kind === 'card' ? board.cards.find((c) => c.id === selected.id) : null
-          if (!card) return
-          card.color = color || undefined
-          place(card, cardEls.get(card.id))
-          select_(selected)
-          changed()
-        }
-        swatches.append(s)
-      }
-      const needBoard = (fn) => (e) => (board && !broken ? fn(e.currentTarget) : undefined)
-      toolbar.append(
-        select,
-        btn(t().newBoard, () => void createBoard()),
-        el('span', { className: 'bd-sep' }),
-        btn('+ ' + t().card, needBoard(() => addCard({ text: '' }))),
-        btn('+ ' + t().note, needBoard((b) => pickNote(b))),
-        swatches,
-        el('span', { className: 'bd-grow' }),
-        btn(t().fit, () => board && fit()),
-        zoomLabel,
-        btn('🗑', () => removeSelected(), 'bd-trash')
-      )
-      toolbar.lastChild.title = t().delete
+      select.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        showMenu(e.clientX, e.clientY, boardMenu())
+      })
+      toolbar.append(select, moreBtn, el('span', { className: 'bd-sep' }), addBtn, handBtn, undoBtn, redoBtn, el('span', { className: 'bd-grow' }), findBtn, viewBtn)
 
-      /* --- the controller the rest of the add-on talks to --- */
+      /* ---------- the controller the rest of the add-on talks to ---------- */
       controller = {
         addNotes: (paths) => {
           if (!board || broken) {
             pendingNotes.push(...paths)
             return
           }
-          const known = new Set(board.cards.filter((c) => c.note).map((c) => c.note))
-          for (const p of paths) if (!known.has(p)) addCard({ note: p })
+          const known = new Set(board.cards.filter((c) => c.type === 'note').map((c) => c.note))
+          for (const p of paths) if (!known.has(p)) addCard({ type: 'note', note: p }, null, false)
         },
         externalChange: async (changedPaths) => {
           if (!path || !changedPaths.includes(path)) fillSelect()
@@ -651,37 +2072,36 @@ export default {
               /* the note is gone: the next switch of boards shows it */
             }
           }
-          for (const [id, node] of cardEls) {
-            const card = board?.cards.find((c) => c.id === id)
-            if (card?.note) renderBody(card, node.querySelector('.bd-body'))
-          }
+          // a note that changed has a new preview
+          for (const p of changedPaths) notes.delete(p)
+          for (const c of board?.cards ?? []) if (c.type === 'note') renderCard(c)
         },
         flush: write
       }
 
       const paths = fillSelect()
       const last = data().last
-      void openPath(paths.includes(last) ? last : paths[0] ?? '').then(() => {
-        fillSelect()
-        if (!paths.length) hint.textContent = t().emptyHint
-      })
+      void openPath(paths.includes(last) ? last : paths[0] ?? '').then(() => fillSelect())
+      const onResize = () => (board ? (applyView(), undefined) : undefined)
+      window.addEventListener('resize', onResize)
 
       return () => {
-        alive = false
-        clearTimeout(wheelTimer)
+        window.removeEventListener('resize', onResize)
+        clearTimeout(keyTimer)
+        cancelAnimationFrame(miniFrame)
         void write()
-        if (controller && alive === false) controller = null
+        if (controller) controller = null
       }
     }
 
-    api.views.add({ id: 'main', title: { ru: TEXT.ru.title, en: TEXT.en.title }, mount: mountBoards })
+    api.views.add({ id: 'main', title: { ru: 'Доски', en: 'Boards' }, mount: mountBoards })
 
-    /* ---------------- the rest ---------------- */
+    /* ====================================================================== the rest */
 
-    api.commands.add({ id: 'open', name: { ru: TEXT.ru.open, en: TEXT.en.open }, keys: 'Ctrl+Alt+B', run: openBoards })
+    api.commands.add({ id: 'open', name: { ru: 'Открыть доски', en: 'Open boards' }, keys: 'Ctrl+Alt+B', run: openBoards })
     api.rail.add({
       id: 'open',
-      title: { ru: TEXT.ru.title, en: TEXT.en.title },
+      title: { ru: 'Доски', en: 'Boards' },
       icon: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
       command: 'open',
       run: openBoards
@@ -692,7 +2112,7 @@ export default {
         ? []
         : [
             {
-              label: { ru: TEXT.ru.addToBoard, en: TEXT.en.addToBoard },
+              label: { ru: 'Добавить на доску', en: 'Add to the board' },
               action: () => {
                 if (controller) controller.addNotes([path])
                 else pendingNotes.push(path)
@@ -712,44 +2132,117 @@ export default {
       .bd-root { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-app); }
       .bd-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
       .bd-btn { height: 30px; padding: 0 12px; }
-      .bd-trash { padding: 0 8px; }
+      .bd-btn.bd-icon { padding: 0; width: 32px; font-size: 15px; }
+      .bd-btn.on { background: var(--accent); color: var(--bg-app); }
+      .bd-btn:disabled { opacity: .4; pointer-events: none; }
       .bd-select { height: 30px; min-width: 140px; max-width: 240px; }
       .bd-sep { width: 1px; height: 18px; background: var(--border); }
       .bd-grow { flex: 1; }
-      .bd-zoom { min-width: 40px; text-align: right; color: var(--text-3); font-size: 12px; }
-      .bd-swatches { display: flex; gap: 6px; padding: 0 4px; }
-      .bd-swatches.off { opacity: .35; pointer-events: none; }
-      .bd-swatch { width: 18px; height: 18px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
-      .bd-swatch.none { background: transparent; box-shadow: inset 0 0 0 1px var(--text-3); }
-      .bd-swatch.on { box-shadow: 0 0 0 2px var(--bg-app), 0 0 0 4px var(--text-2); }
-      .bd-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; cursor: grab; touch-action: none;
-        background-image: radial-gradient(circle, var(--border-2) 1px, transparent 1px); background-size: 24px 24px; }
+      .bd-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; cursor: default; touch-action: none; user-select: none; }
+      .bd-canvas[data-grid='dots'] { background-image: radial-gradient(circle, var(--border-2) 1px, transparent 1px); }
+      .bd-canvas[data-grid='lines'] { background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); }
+      .bd-canvas.hand, .bd-canvas.panning { cursor: grab; }
       .bd-canvas.panning { cursor: grabbing; }
+      .bd-canvas.arrowing { cursor: crosshair; }
+      .bd-canvas.moving .bd-card { transition: none; }
       .bd-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+      .bd-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; }
       .bd-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
       .bd-line { stroke: var(--text-3); stroke-width: 2; fill: none; }
-      .bd-arrow-head { fill: var(--text-3); }
-      .bd-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+      .bd-arrow-head { fill: context-stroke; }
+      .bd-hit { stroke: transparent; stroke-width: 16; fill: none; pointer-events: stroke; cursor: pointer; }
       .bd-link.on .bd-line { stroke: var(--accent); }
+      .bd-label { fill: var(--text); font-size: 13px; paint-order: stroke; stroke: var(--bg-app); stroke-width: 6px; stroke-linejoin: round; pointer-events: none; }
       .bd-temp { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
-      .bd-card { position: absolute; box-sizing: border-box; background: var(--float-bg); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px 12px; cursor: default; user-select: none; box-shadow: 0 2px 8px rgb(0 0 0 / .2); }
-      .bd-card.colored { border-top: 4px solid var(--c); }
+      .bd-guide { stroke: #f06ac0; stroke-width: 1; vector-effect: non-scaling-stroke; }
+      .bd-card { position: absolute; box-sizing: border-box; background: var(--float-bg); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px 12px; box-shadow: 0 2px 8px rgb(0 0 0 / .2); }
+      .bd-card.colored:not(.t-sticky):not(.t-frame):not(.t-shape) { border-top: 4px solid var(--c); }
       .bd-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgb(0 0 0 / .2); }
-      .bd-body { height: 100%; overflow: hidden; display: flex; align-items: flex-start; gap: 8px; }
-      .bd-card.is-note .bd-body { align-items: center; }
-      .bd-text { white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 14px; line-height: 1.45; }
-      .bd-note-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 14px; }
+      .bd-card.locked::after { content: '🔒'; position: absolute; right: 6px; top: 4px; font-size: 11px; opacity: .6; }
+      .bd-body { height: 100%; overflow: hidden; }
+      .bd-text { white-space: pre-wrap; word-break: break-word; color: var(--text); line-height: 1.45; }
+      .t-sticky { background: var(--c); border-color: transparent; color: #1e2127; box-shadow: 0 4px 12px rgb(0 0 0 / .28); }
+      .t-sticky .bd-text { color: #1e2127; font-weight: 500; }
+      .t-sticky.on { box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgb(0 0 0 / .28); }
+      .t-frame { background: color-mix(in srgb, var(--c, #8f96a3) 8%, transparent); border: 1.5px dashed var(--c, var(--text-3)); box-shadow: none; padding: 0; }
+      .t-frame { pointer-events: none; }
+      .t-frame .bd-body { overflow: visible; }
+      .t-frame .bd-frame-title, .t-frame .bd-grip, .t-frame .bd-port, .t-frame .bd-edit-title { pointer-events: auto; }
+      .bd-frame-title { position: absolute; left: 0; right: 0; top: -28px; height: 28px; box-sizing: border-box; cursor: move; padding: 2px 4px; color: var(--text-2); font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .t-shape { background: transparent; border: 0; box-shadow: none; padding: 0; }
+      .t-shape .bd-body { position: relative; overflow: visible; }
+      .bd-shape-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+      .bd-shape-fill { fill: color-mix(in srgb, var(--c, transparent) 22%, var(--float-bg)); stroke: var(--c, var(--text-3)); stroke-width: 2; }
+      .t-shape:not(.colored) .bd-shape-fill { fill: var(--float-bg); stroke: var(--text-3); }
+      .t-shape.on .bd-shape-fill { stroke: var(--accent); }
+      .bd-shape-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px 16px; }
+      .t-shape .bd-edit { text-align: center; }
+      .t-note .bd-body { display: flex; flex-direction: column; gap: 6px; }
+      .bd-note-head { display: flex; align-items: center; gap: 8px; }
+      .bd-note-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 500; }
       .bd-note-name.gone { color: var(--text-3); text-decoration: line-through; }
-      .bd-open { color: var(--text-3); width: 24px; height: 24px; border-radius: 6px; }
+      .bd-note-excerpt { flex: 1; overflow: hidden; color: var(--text-3); font-size: .85em; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+      .bd-open { color: var(--text-3); width: 24px; height: 24px; border-radius: 6px; flex: none; }
       .bd-open:hover { background: var(--bg-hover); color: var(--text); }
-      .bd-edit { width: 100%; height: 100%; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 14px; line-height: 1.45; user-select: text; }
-      .bd-port { position: absolute; right: -8px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); }
+      .t-image { padding: 0; overflow: hidden; background: var(--bg-panel); }
+      .t-image .bd-body { overflow: hidden; }
+      .bd-img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+      .bd-link-card { display: flex; flex-direction: column; gap: 4px; justify-content: center; height: 100%; }
+      .bd-link-host { color: var(--accent); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bd-link-url { color: var(--text-3); font-size: .85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bd-todo { display: flex; flex-direction: column; gap: 4px; }
+      .bd-todo-row { display: flex; align-items: flex-start; gap: 8px; color: var(--text); line-height: 1.4; cursor: pointer; }
+      .bd-todo-row.done span { color: var(--text-3); text-decoration: line-through; }
+      .bd-todo-row input { margin-top: .3em; accent-color: var(--accent); }
+      .bd-todo-empty { color: var(--text-3); font-size: .9em; }
+      .bd-edit { width: 100%; height: 100%; resize: none; border: 0; outline: none; background: transparent; color: inherit; font: inherit; line-height: 1.45; user-select: text; padding: 0; }
+      .bd-edit-title { height: auto; font-size: 14px; font-weight: 500; background: var(--bg-app); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; position: relative; }
+      .t-sticky .bd-edit { color: #1e2127; }
+      .bd-port { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; }
+      .bd-port.p-r { right: -8px; top: 50%; margin-top: -7px; } .bd-port.p-l { left: -8px; top: 50%; margin-top: -7px; }
+      .bd-port.p-t { top: -8px; left: 50%; margin-left: -7px; } .bd-port.p-b { bottom: -8px; left: 50%; margin-left: -7px; }
       .bd-card:hover .bd-port, .bd-card.on .bd-port { opacity: 1; }
-      .bd-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0;
+      .bd-card.locked .bd-port, .bd-card.locked .bd-grip { display: none; }
+      .bd-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0; z-index: 2;
         background: linear-gradient(135deg, transparent 50%, var(--text-3) 50%, var(--text-3) 58%, transparent 58%, transparent 72%, var(--text-3) 72%, var(--text-3) 80%, transparent 80%); }
       .bd-card:hover .bd-grip, .bd-card.on .bd-grip { opacity: .7; }
-      .bd-hint { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); max-width: 380px; text-align: center; color: var(--text-3); font-size: 14px; line-height: 1.5; pointer-events: none; }
+      .bd-canvas.searching .bd-card:not(.hit) { opacity: .25; }
+      .bd-card.hit { box-shadow: 0 0 0 2px #fdd663; }
+      .bd-band { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; z-index: 5; }
+      .bd-hint { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); max-width: 420px; text-align: center; color: var(--text-3); font-size: 14px; line-height: 1.55; pointer-events: none; }
       .bd-canvas.readonly .bd-card { opacity: .6; }
+      .bd-float { position: absolute; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 10px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 20px rgb(0 0 0 / .35); }
+      .bd-fbtn { min-width: 28px; height: 28px; border-radius: 6px; color: var(--text-2); font-size: 14px; }
+      .bd-fbtn:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-fcolor::before { content: ''; display: block; width: 16px; height: 16px; margin: auto; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1.5px var(--text-3); }
+      .bd-zoombox { position: absolute; left: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; border-radius: 9px; background: var(--float-bg); border: 1px solid var(--border-2); overflow: hidden; }
+      .bd-zoombox button { height: 30px; min-width: 30px; padding: 0 6px; color: var(--text-2); font-size: 15px; }
+      .bd-zoombox button:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-zoom-label { font-size: 12px !important; min-width: 48px !important; }
+      .bd-mini { position: absolute; right: 12px; bottom: 12px; z-index: 6; width: 180px; height: 120px; border-radius: 9px; background: var(--float-bg); border: 1px solid var(--border-2); cursor: pointer; }
+      .bd-search { position: absolute; right: 12px; top: 12px; z-index: 8; display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 9px; background: var(--float-bg); border: 1px solid var(--border-2); }
+      .bd-search input { width: 190px; height: 26px; border: 0; outline: 0; background: transparent; color: var(--text); }
+      .bd-search-count { color: var(--text-3); font-size: 12px; min-width: 30px; text-align: right; }
+      .bd-search button { width: 24px; height: 24px; border-radius: 6px; color: var(--text-3); }
+      .bd-menu { padding: 5px; min-width: 210px; }
+      .bd-m { display: flex; flex-direction: column; }
+      .bd-m-item { position: relative; }
+      .bd-m-row { display: flex; align-items: center; gap: 4px; width: 100%; padding: 6px 10px 6px 6px; border-radius: 6px; font-size: 13px; color: var(--text-2); text-align: left; }
+      .bd-m-item:hover > .bd-m-row { background: var(--bg-hover); color: var(--text); }
+      .bd-m-item.danger > .bd-m-row { color: var(--danger-text); }
+      .bd-m-item.disabled > .bd-m-row { opacity: .4; }
+      .bd-m-check { width: 18px; text-align: center; color: var(--accent); flex: none; }
+      .bd-m-label { flex: 1; white-space: nowrap; }
+      .bd-m-hint { color: var(--text-3); font-size: 11px; margin-left: 18px; white-space: nowrap; }
+      .bd-m-sep { height: 1px; margin: 5px 4px; background: var(--border); }
+      .bd-m-colors { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 10px; max-width: 220px; }
+      .bd-m-sub { display: none; position: absolute; left: calc(100% - 2px); top: -6px; padding: 5px; min-width: 200px; border-radius: 10px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 10px 30px rgba(0,0,0,.35); z-index: 3; }
+      .bd-m-sub.flip { left: auto; right: calc(100% - 2px); }
+      .bd-m-sub.up { top: auto; bottom: -6px; }
+      .bd-m-item:hover > .bd-m-sub { display: block; }
+      .bd-swatch { width: 20px; height: 20px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+      .bd-swatch.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+      .bd-swatch.on { box-shadow: 0 0 0 2px var(--float-bg), 0 0 0 4px var(--text-2); }
       .bd-find { width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px; margin-bottom: 6px; border-radius: 7px; border: 1px solid var(--outline); background: var(--bg-app); color: var(--text); outline: none; }
       .bd-find:focus { border-color: var(--accent); }
       .bd-found { max-height: 260px; min-width: 260px; max-width: 360px; overflow-y: auto; }
