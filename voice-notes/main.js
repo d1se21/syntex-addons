@@ -143,7 +143,12 @@ export default {
       const time = el('span', { className: 'voice-time', textContent: clock(0) })
       const stop = el('button', { className: 'btn voice-stop', textContent: t().stop })
       const cancel = el('button', { className: 'btn', textContent: t().cancel })
-      box.append(el('div', { className: 'voice-bar', role: 'status' }, [el('span', { className: 'voice-dot' }), time, stop, cancel]))
+      // the loudness while recording: strips that run to the left, like the voice message of a messenger is made
+      const LEVELS = 32
+      const levels = el('span', { className: 'voice-levels' })
+      const strips = Array.from({ length: LEVELS }, () => levels.appendChild(el('i')))
+      let meter = null
+      box.append(el('div', { className: 'voice-bar', role: 'status' }, [el('span', { className: 'voice-dot' }), time, levels, stop, cancel]))
 
       openMic(data().mic)
         .then((s) => {
@@ -170,6 +175,28 @@ export default {
             // what was recorded so far is kept: the recording ends as if Stop was pressed
             if (recorder.state !== 'inactive') recorder.stop()
             else finish()
+          }
+          try {
+            const ctx = new AudioContext()
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 512
+            ctx.createMediaStreamSource(s).connect(analyser)
+            const buf = new Uint8Array(analyser.fftSize)
+            const history = new Array(LEVELS).fill(0)
+            const id = setInterval(() => {
+              analyser.getByteTimeDomainData(buf)
+              let peak = 0
+              for (const v of buf) peak = Math.max(peak, Math.abs(v - 128))
+              history.push(Math.min(1, peak / 90))
+              history.shift()
+              strips.forEach((strip, i) => (strip.style.height = Math.round(10 + history[i] * 90) + '%'))
+            }, 70)
+            meter = () => {
+              clearInterval(id)
+              void ctx.close()
+            }
+          } catch {
+            /* no meter: the recording goes on */
           }
           recorder.start(250)
           startedAt = Date.now()
@@ -208,6 +235,7 @@ export default {
       return () => {
         clearInterval(timer)
         window.removeEventListener('keydown', onKey, true)
+        meter?.()
         // leaving without Stop: nothing is kept (after Stop the file is already being made)
         if (!stop.disabled) cancelled = true
         if (recorder && recorder.state !== 'inactive') recorder.stop()
