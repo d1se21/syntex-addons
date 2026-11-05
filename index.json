@@ -10,7 +10,7 @@
         "ru": "Вкладки собираются в цветные коллекции, как группы вкладок в браузере: название, цвет, свернуть, новая вкладка в коллекции, разгруппировать, закрыть все. Всё — в меню вкладки по правой кнопке.",
         "en": "Gather tabs into coloured collections, like tab groups in a browser: a name, a colour, fold, a new tab in the collection, ungroup, close them all. All in the right-click menu of a tab."
       },
-      "version": "1.4.0",
+      "version": "1.4.1",
       "author": "Syntex",
       "minApi": 6,
       "path": "tab-collections",
@@ -29,7 +29,7 @@
         "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Микрофон выбирается в настройках аддона.",
         "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The microphone is chosen in the add-on's settings."
       },
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "Syntex",
       "minApi": 6,
       "path": "voice-notes",

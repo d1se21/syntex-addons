@@ -17,7 +17,8 @@ const TEXT = {
     micUnnamed: 'Микрофон',
     micGone: 'Сохранённое устройство (не подключено)',
     test: 'Проверить',
-    stopTest: 'Стоп'
+    stopTest: 'Стоп',
+    tooLong: 'Запись длится 35 минут: это предел, она остановлена и вставлена'
   },
   en: {
     record: 'Record a voice note',
@@ -33,9 +34,13 @@ const TEXT = {
     micUnnamed: 'Microphone',
     micGone: 'Saved device (not connected)',
     test: 'Test',
-    stopTest: 'Stop'
+    stopTest: 'Stop',
+    tooLong: 'The recording reached 35 minutes, the limit: it was stopped and inserted'
   }
 }
+
+// 22 kHz mono 16-bit is 44 100 bytes a second: 35 minutes stay under the 100 MB Syntex keeps for one sound file
+const MAX_SECONDS = 35 * 60
 
 /** A recording (whatever the browser produced, usually webm/opus) as a mono 16-bit WAV file at 22 kHz. */
 async function blobToWav(blob) {
@@ -127,10 +132,13 @@ export default {
 
     /** A small bar at the bottom of the window: records until Stop, then puts the WAV file into the note. */
     const recorderBar = (box, note, finish) => {
-      let seconds = 0
       let recorder = null
       let stream = null
       let cancelled = false
+      // Stop pressed while the microphone is still opening: the recording ends as soon as it has begun
+      let stopAsked = false
+      let startedAt = null
+      const elapsed = () => (startedAt === null ? 0 : Math.floor((Date.now() - startedAt) / 1000))
       const chunks = []
       const time = el('span', { className: 'voice-time', textContent: clock(0) })
       const stop = el('button', { className: 'btn voice-stop', textContent: t().stop })
@@ -157,17 +165,33 @@ export default {
               api.ui.notice(e instanceof Error ? e.message : String(e), 6000)
             }
           }
+          recorder.onerror = () => {
+            api.ui.notice(t().micError, 7000)
+            // what was recorded so far is kept: the recording ends as if Stop was pressed
+            if (recorder.state !== 'inactive') recorder.stop()
+            else finish()
+          }
           recorder.start(250)
+          startedAt = Date.now()
+          if (stopAsked) recorder.stop()
         })
         .catch(() => {
           api.ui.notice(t().micError, 7000)
           finish()
         })
 
-      const timer = setInterval(() => (time.textContent = clock(++seconds)), 1000)
+      const timer = setInterval(() => {
+        time.textContent = clock(elapsed())
+        // the WAV of a longer recording would be over the 100 MB the vault keeps: it ends (and is kept) before that
+        if (elapsed() >= MAX_SECONDS && !stop.disabled) {
+          api.ui.notice(t().tooLong, 7000)
+          stop.onclick()
+        }
+      }, 500)
       const onKey = (e) => {
-        // an Esc that closes a menu or a dialog is theirs; the recording is cancelled only by an Esc meant for the note
-        if (e.key === 'Escape' && !document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop')) {
+        // an Esc that closes a menu, a dialog or a popup is theirs; the recording is cancelled only by an Esc meant for
+        // the note, and only in its first seconds: a longer recording is never thrown away by a stray key (Cancel is there)
+        if (e.key === 'Escape' && elapsed() < 5 && !document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop, .addon-popup')) {
           e.stopPropagation()
           finish()
         }
@@ -175,7 +199,9 @@ export default {
       window.addEventListener('keydown', onKey, true)
       stop.onclick = () => {
         stop.disabled = true
-        if (recorder && recorder.state !== 'inactive') recorder.stop()
+        if (recorder) {
+          if (recorder.state !== 'inactive') recorder.stop()
+        } else stopAsked = true
       }
       cancel.onclick = finish
 

@@ -30,7 +30,9 @@ const TEXT = {
     fold: 'Свернуть',
     unfold: 'Развернуть',
     ungroup: 'Разгруппировать',
-    close: 'Закрыть коллекцию'
+    close: 'Закрыть коллекцию',
+    closeAsk: 'Будут закрыты все вкладки коллекции: {n}.',
+    closeYes: 'Закрыть'
   },
   en: {
     toNew: 'Add the tab to a new collection',
@@ -43,7 +45,9 @@ const TEXT = {
     fold: 'Fold',
     unfold: 'Unfold',
     ungroup: 'Ungroup',
-    close: 'Close the collection'
+    close: 'Close the collection',
+    closeAsk: 'All {n} tabs of the collection will be closed.',
+    closeYes: 'Close'
   }
 }
 
@@ -57,7 +61,9 @@ export default {
   onload(api) {
     const t = () => TEXT[api.language()] ?? TEXT.en
     /** { collections: [{ id, name, color, folded, tabs: [tab id, ...] }] } */
-    const state = api.data.get({ collections: [] })
+    const stored = api.data.get({ collections: [] })
+    // (what was saved may be from another version or damaged: only whole collections are taken)
+    const state = { collections: (Array.isArray(stored?.collections) ? stored.collections : []).filter((c) => c && Array.isArray(c.tabs)) }
     const save = () => api.data.set(state)
     const colorOf = (c) => COLORS.find((x) => x.id === c.color)?.value ?? COLORS[0].value
     const collectionOf = (tabId) => state.collections.find((c) => c.tabs.includes(tabId))
@@ -115,7 +121,9 @@ export default {
           changed = true
           joining.delete(id)
           const was = before.get(id)
-          const heir = was && heirOf(was)
+          // only an empty tab has an heir (a note opened in it takes its place); any other tab that closes just leaves,
+          // so a tab opened a moment later next to it does not slip into the collection
+          const heir = was && was.kind === 'empty' && heirOf(was)
           return heir ? [heir.id] : []
         })
         // a tab brought to the front opens its folded collection; but not one that came to the front only because the
@@ -254,7 +262,9 @@ export default {
       update()
     }
 
-    const closeCollection = (c) => {
+    const closeCollection = async (c) => {
+      // several tabs at once cannot be taken back: asked first
+      if (c.tabs.length > 1 && !(await api.ui.confirm(t().close, t().closeAsk.replace('{n}', String(c.tabs.length)), t().closeYes))) return
       const ids = [...c.tabs]
       state.collections = state.collections.filter((x) => x !== c)
       save()
