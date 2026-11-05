@@ -25,6 +25,7 @@ const TEXT = {
     leave: 'Убрать из коллекции',
     namePlaceholder: 'Назовите эту коллекцию',
     newTab: 'Новая вкладка в коллекции',
+    edit: 'Изменить коллекцию',
     fold: 'Свернуть',
     unfold: 'Развернуть',
     ungroup: 'Разгруппировать',
@@ -37,6 +38,7 @@ const TEXT = {
     leave: 'Remove from the collection',
     namePlaceholder: 'Name this collection',
     newTab: 'New tab in the collection',
+    edit: 'Edit the collection',
     fold: 'Fold',
     unfold: 'Unfold',
     ungroup: 'Ungroup',
@@ -185,7 +187,9 @@ export default {
               folded: c.folded,
               onClick: () => (c.folded ? setFolded(c, false) : fold(c)),
               onMenu: (x, y) => editor(c, x, y),
-              onClose: () => closeCollection(c)
+              onClose: () => closeCollection(c),
+              onHover: (x, y) => c.folded && hoverList(c, x, y),
+              onLeave: leaveSoon
             }
           : undefined
         api.tabs.decorate(tab.id, { color: colorOf(c), chip, hidden: c.folded && !isFirst })
@@ -241,6 +245,76 @@ export default {
         const r = api.tabs.rectOf(tabId)
         if (r) editor(c, r.left, r.bottom + 4)
       })
+    }
+
+    // A folded collection lists its tabs under the chip while the mouse is on it, as a browser does: the list stays
+    // while the mouse goes over from the chip to it, and goes a moment after the mouse has left both.
+    let closeList = null
+    let leaveTimer = null
+    const stayOpen = () => {
+      clearTimeout(leaveTimer)
+      leaveTimer = null
+    }
+    const leaveSoon = () => {
+      stayOpen()
+      leaveTimer = setTimeout(() => {
+        closeList?.()
+        closeList = null
+      }, 250)
+    }
+    api.onDispose(stayOpen)
+
+    const ICON = {
+      tab: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6',
+      plus: 'M12 5v14M5 12h14',
+      pencil: 'M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z'
+    }
+    const icon = (d) => {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', '0 0 24 24')
+      svg.setAttribute('class', 'tc-icon')
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      path.setAttribute('d', d)
+      svg.append(path)
+      return svg
+    }
+
+    /** The list of a folded collection: its tabs (a click brings one to the front, which opens the collection), a new tab, the editor. */
+    const hoverList = (c, x, y) => {
+      stayOpen()
+      const close = api.ui.popup({
+        x,
+        y,
+        mount: (box, closeBox) => {
+          box.onmouseenter = stayOpen
+          box.onmouseleave = leaveSoon
+          const row = (label, d, action, cls = '') => {
+            const b = el('button', { className: 'tc-row' + cls }, [icon(d), el('span', { textContent: label })])
+            b.onclick = () => {
+              closeBox()
+              action()
+            }
+            return b
+          }
+          const list = el('div', { className: 'tc-list' }, tabsOf(c).map((tab) => row(tab.title, ICON.tab, () => api.tabs.activate(tab.id))))
+          list.style.setProperty('--c', colorOf(c))
+          box.append(
+            list,
+            el('div', { className: 'tc-sep' }),
+            row(t().newTab, ICON.plus, () => {
+              const id = api.tabs.open({ after: tabsOf(c).pop()?.id })
+              if (!id) return
+              takeOut(id)
+              c.tabs.push(id)
+              c.folded = false
+              save()
+              update()
+            }),
+            row(t().edit, ICON.pencil, () => editor(c, x, y))
+          )
+        }
+      })
+      closeList = close
     }
 
     /** The editor of a collection, like the one of a tab group in a browser: its name, its colour and what to do. */
@@ -378,6 +452,12 @@ export default {
       .tc-item { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text-2); }
       .tc-item:hover { background: var(--bg-hover); color: var(--text); }
       .tc-item.danger { color: var(--danger-text); }
+      .tc-list { position: relative; padding-left: 8px; }
+      .tc-list::before { content: ''; position: absolute; left: 2px; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--c); }
+      .tc-row { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 220px; max-width: 320px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: var(--text-2); text-align: left; }
+      .tc-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tc-row:hover { background: var(--bg-hover); color: var(--text); }
+      .tc-icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: var(--text-3); }
     `)
     update()
   }
