@@ -1,6 +1,7 @@
 // Tab collections, like tab groups in Chrome or Edge. A collection is a run of tabs side by side with a colour and a
 // name: its chip stands before its first tab (a click folds it, a right click opens its editor, the cross closes
 // it), and a line of its colour runs under its tabs; the right-click menu of a tab of it folds or closes it too.
+// The chip drags the whole collection (let go on another collection, it goes before or after it, never inside).
 // A dragged tab held for a moment over another tab joins that one's collection, or makes a new collection with it;
 // a tab dragged out of the run leaves it, a tab dropped inside the run joins it. The collections are kept with the
 // add-on's data, by tab id.
@@ -189,6 +190,7 @@ export default {
               onMenu: (x, y) => editor(c, x, y),
               onClose: () => closeCollection(c),
               onHover: (x, y) => c.folded && hoverList(c, x, y),
+              onDragTo: (target, side) => moveCollection(c, target, side),
               onLeave: leaveSoon
             }
           : undefined
@@ -216,6 +218,31 @@ export default {
         }
       }
       setFolded(c, true)
+    }
+
+    /**
+     * The chip dragged and let go before or after a tab: the whole collection moves there, keeping its order. Let go on
+     * a tab of another collection, it goes before or after that whole collection: collections never nest.
+     */
+    const moveCollection = (c, target, side) => {
+      if (c.tabs.includes(target)) return
+      const other = collectionOf(target)
+      const run = other ? tabsOf(other) : []
+      const anchor = other ? (side === 'before' ? run[0].id : run[run.length - 1].id) : target
+      const mine = tabsOf(c)
+      if (!mine.length) return
+      // the tabs go one by one: in between, the collection looks torn apart, and the order rules must not see that
+      updating = true
+      try {
+        if (side === 'before') api.tabs.move(mine[0].id, anchor, 'before')
+        else api.tabs.move(mine[0].id, anchor)
+        for (let i = 1; i < mine.length; i++) api.tabs.move(mine[i].id, mine[i - 1].id)
+      } finally {
+        updating = false
+      }
+      before = new Map(api.tabs.list().map((tab) => [tab.id, tab]))
+      save()
+      update()
     }
 
     const closeCollection = (c) => {
