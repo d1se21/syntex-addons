@@ -106,6 +106,7 @@ export default {
           .filter((tab) => tab.window === was.window && Math.abs(tab.index - was.index) <= 1 && at - firstSeen.get(tab.id) < HEIR_MS && !collectionOf(tab.id))
           .sort((a, b) => Math.abs(a.index - was.index) - Math.abs(b.index - was.index))[0]
       let changed = false
+      const closed = [...before.keys()].some((id) => !now.has(id))
 
       // closed tabs leave, or hand their place over
       for (const c of state.collections) {
@@ -117,10 +118,14 @@ export default {
           const heir = was && heirOf(was)
           return heir ? [heir.id] : []
         })
-        // a tab brought to the front opens its folded collection
+        // a tab brought to the front opens its folded collection; but not one that came to the front only because the
+        // tab in front was closed (Syntex picks a neighbour then): the collection stays folded, another tab goes in front
         if (c.folded && c.tabs.some((id) => now.get(id)?.active && !before.get(id)?.active)) {
-          c.folded = false
-          changed = true
+          if (closed) awayFrom(c, tabs)
+          else {
+            c.folded = false
+            changed = true
+          }
         }
       }
 
@@ -188,7 +193,6 @@ export default {
               folded: c.folded,
               onClick: () => (c.folded ? setFolded(c, false) : fold(c)),
               onMenu: (x, y) => editor(c, x, y),
-              onClose: () => closeCollection(c),
               onHover: (x, y) => c.folded && hoverList(c, x, y),
               onDragTo: (target, side) => moveCollection(c, target, side),
               onLeave: leaveSoon
@@ -206,7 +210,12 @@ export default {
 
     /** Folded, a collection shows only its chip; a tab of it that is in front gives way to the nearest other tab. */
     const fold = (c) => {
-      const tabs = api.tabs.list()
+      awayFrom(c)
+      setFolded(c, true)
+    }
+
+    /** A tab of the collection that is in front gives way to the nearest tab outside of it (and of folded ones). */
+    const awayFrom = (c, tabs = api.tabs.list()) => {
       for (const front of tabs.filter((x) => x.active && c.tabs.includes(x.id))) {
         // (not a tab of another folded collection: bringing it to the front would unfold that one)
         const others = tabs.filter((x) => x.window === front.window && !c.tabs.includes(x.id) && !collectionOf(x.id)?.folded)
@@ -218,7 +227,6 @@ export default {
           api.tabs.open({ after: tabsOf(c, tabs).pop()?.id })
         }
       }
-      setFolded(c, true)
     }
 
     /**
