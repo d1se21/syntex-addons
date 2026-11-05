@@ -208,7 +208,8 @@ export default {
     const fold = (c) => {
       const tabs = api.tabs.list()
       for (const front of tabs.filter((x) => x.active && c.tabs.includes(x.id))) {
-        const others = tabs.filter((x) => x.window === front.window && !c.tabs.includes(x.id))
+        // (not a tab of another folded collection: bringing it to the front would unfold that one)
+        const others = tabs.filter((x) => x.window === front.window && !c.tabs.includes(x.id) && !collectionOf(x.id)?.folded)
         if (others.length) {
           others.sort((a, b) => Math.abs(a.index - front.index) - Math.abs(b.index - front.index))
           api.tabs.activate(others[0].id)
