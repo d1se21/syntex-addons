@@ -224,9 +224,9 @@ export default {
         }
       }, 500)
       const onKey = (e) => {
-        // an Esc that closes a menu, a dialog or a popup is theirs; the recording is cancelled only by an Esc meant for
+        // an Esc that closes a menu, a dialog, a popup or the list of slash commands is theirs; the recording is cancelled only by an Esc meant for
         // the note, and only in its first seconds: a longer recording is never thrown away by a stray key (Cancel is there)
-        if (e.key === 'Escape' && elapsed() < 5 && !document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop, .addon-popup')) {
+        if (e.key === 'Escape' && elapsed() < 5 && !document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop, .addon-popup, .sl-box')) {
           e.stopPropagation()
           finish()
         }

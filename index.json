@@ -171,7 +171,7 @@
         "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Микрофон выбирается в настройках аддона.",
         "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The microphone is chosen in the add-on's settings."
       },
-      "version": "1.3.0",
+      "version": "1.3.1",
       "author": "Syntex",
       "minApi": 6,
       "permissions": [
@@ -184,8 +184,8 @@
         "styles.css"
       ],
       "hashes": {
-        "manifest.json": "7876e346e598cc1c6d091234d244131c3e2ec24ddb079f1f3735924d8e34bef4",
-        "main.js": "65d90c6130b00bee48241db7e313a3bf0426161f8cc10fe9e9194f885af18348",
+        "manifest.json": "843467bbce6ea993c2518c74aa41761f66bbe0d41e68ca65d531e1060aa18e6d",
+        "main.js": "464db1fcc96e77292bead31d8454ac559bc9b22a1b796a44be1ebce015318b65",
         "styles.css": "62c09f0b9ad3d170b047c1d4321efa2933ad498552b6788d9bc91d0587329fea"
       }
     }
