@@ -1,5 +1,5 @@
 // Tab collections, like tab groups in Chrome or Edge. A collection is a run of tabs side by side with a colour and a
-// name: its chip stands before its first tab (a click folds it, a right click opens its editor, the cross closes
+// name: its chip stands before its first tab (a click folds it, a right click opens its editor; it is closed from
 // it), and a line of its colour runs under its tabs; the right-click menu of a tab of it folds or closes it too.
 // The chip drags the whole collection (let go on another collection, it goes before or after it, never inside).
 // A dragged tab held for a moment over another tab joins that one's collection, or makes a new collection with it;
@@ -282,7 +282,7 @@ export default {
 
     /** A new collection, unnamed, with its editor open at once to name it, like a browser. */
     const create = (tabId) => {
-      const c = { id: `c${Date.now()}`, name: '', color: nextColor(), folded: false, tabs: [] }
+      const c = { id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: '', color: nextColor(), folded: false, tabs: [] }
       state.collections.push(c)
       join(c, tabId)
       save()
@@ -498,7 +498,7 @@ export default {
       }
       takeOut(dragged)
       if (there) there.tabs.push(dragged)
-      else state.collections.push({ id: `c${Date.now()}`, name: '', color: nextColor(), folded: false, tabs: [target, dragged] })
+      else state.collections.push({ id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: '', color: nextColor(), folded: false, tabs: [target, dragged] })
       joining.add(dragged)
       save()
       draw()

@@ -20,7 +20,7 @@
       ],
       "hashes": {
         "manifest.json": "6fb41f8189c290345c2b280da6e1c84dc2e6f1e229f8d5bd73d699fa810b5133",
-        "main.js": "cbd06b815926ce9f4d69a0f93c471a51bde2c797fbe34ad5b4412397a07bbce9"
+        "main.js": "3b7d6195b4b0efbad663624e5a4276b366c73f6d846da1af320cb45a4c4eade6"
       }
     },
     {
@@ -33,7 +33,7 @@
         "ru": "Вкладки собираются в цветные коллекции, как группы вкладок в браузере: название, цвет, свернуть, новая вкладка в коллекции, разгруппировать, закрыть все. Всё — в меню вкладки по правой кнопке.",
         "en": "Gather tabs into coloured collections, like tab groups in a browser: a name, a colour, fold, a new tab in the collection, ungroup, close them all. All in the right-click menu of a tab."
       },
-      "version": "1.4.2",
+      "version": "1.4.3",
       "author": "Syntex",
       "minApi": 6,
       "path": "tab-collections",
@@ -42,8 +42,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "76fa012e50a3bb1919c555564b05e1a0347fea87660b19e2c643fa9a0cc2a6c2",
-        "main.js": "fb19740811bf44f9605f4f5e8032565d8b2847482e076e295489115492c6f2ae"
+        "manifest.json": "e02dd47e7ad5ee94a14947a4134de9828c123cf63bf9a360241e6beb06af70ba",
+        "main.js": "d1c13eed9b96b5e3cfd018f0304369d9ec964a45ed4e737d9f89213ac460300c"
       }
     },
     {
@@ -56,9 +56,12 @@
         "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Микрофон выбирается в настройках аддона.",
         "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The microphone is chosen in the add-on's settings."
       },
-      "version": "1.2.0",
+      "version": "1.3.0",
       "author": "Syntex",
       "minApi": 6,
+      "permissions": [
+        "microphone"
+      ],
       "path": "voice-notes",
       "files": [
         "manifest.json",
@@ -66,8 +69,8 @@
         "styles.css"
       ],
       "hashes": {
-        "manifest.json": "54a90291efaacaaf4b68e8e81a857e857be68b16ca39a42ce7efd60da110b6f7",
-        "main.js": "a3b0782c3fb5210e8ad82e0197543a9c1bdc535d8bd4a9b795ac2bcf69831c0f",
+        "manifest.json": "7876e346e598cc1c6d091234d244131c3e2ec24ddb079f1f3735924d8e34bef4",
+        "main.js": "65d90c6130b00bee48241db7e313a3bf0426161f8cc10fe9e9194f885af18348",
         "styles.css": "62c09f0b9ad3d170b047c1d4321efa2933ad498552b6788d9bc91d0587329fea"
       }
     }

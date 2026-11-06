@@ -18,6 +18,8 @@ const TEXT = {
     micGone: 'Сохранённое устройство (не подключено)',
     test: 'Проверить',
     stopTest: 'Стоп',
+    micFallback: 'Выбранный микрофон не найден: запись идёт с микрофона по умолчанию',
+    allowFirst: 'Названия микрофонов появятся после «Проверить» (Windows покажет их, когда микрофон разрешён)',
     tooLong: 'Запись длится 35 минут: это предел, она остановлена и вставлена'
   },
   en: {
@@ -35,6 +37,8 @@ const TEXT = {
     micGone: 'Saved device (not connected)',
     test: 'Test',
     stopTest: 'Stop',
+    micFallback: 'The chosen microphone is not there: recording from the default one',
+    allowFirst: 'The names of the microphones appear after Test (Windows shows them once the microphone is allowed)',
     tooLong: 'The recording reached 35 minutes, the limit: it was stopped and inserted'
   }
 }
@@ -92,12 +96,13 @@ async function blobToWav(blob) {
 }
 
 /** The microphone chosen in the settings; if that device is gone, the default one. */
-async function openMic(deviceId) {
+async function openMic(deviceId, onFallback) {
   if (deviceId) {
     try {
       return await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } })
     } catch {
-      /* unplugged or renamed: fall back to the default microphone */
+      // unplugged or renamed: the default microphone, and the user hears of it
+      onFallback?.()
     }
   }
   return navigator.mediaDevices.getUserMedia({ audio: true })
@@ -118,8 +123,10 @@ export default {
     const data = () => api.data.get({ mic: '' })
 
     let close = null
+    // the recording in progress: the shortcut that started it stops it (and puts it into the note)
+    let stopNow = null
     const record = () => {
-      if (close) return // one recording at a time
+      if (close) return void stopNow?.()
       // the recording goes into the note it was started in, even if another tab is in front when it ends
       const note = api.editor.active()
       if (!note) return api.ui.notice(t().openNote)
@@ -150,7 +157,7 @@ export default {
       let meter = null
       box.append(el('div', { className: 'voice-bar', role: 'status' }, [el('span', { className: 'voice-dot' }), time, levels, stop, cancel]))
 
-      openMic(data().mic)
+      openMic(data().mic, () => api.ui.notice(t().micFallback, 5000))
         .then((s) => {
           if (cancelled) return s.getTracks().forEach((track) => track.stop())
           stream = s
@@ -178,6 +185,7 @@ export default {
           }
           try {
             const ctx = new AudioContext()
+            void ctx.resume()
             const analyser = ctx.createAnalyser()
             analyser.fftSize = 512
             ctx.createMediaStreamSource(s).connect(analyser)
@@ -231,11 +239,13 @@ export default {
         } else stopAsked = true
       }
       cancel.onclick = finish
+      stopNow = () => !stop.disabled && stop.onclick()
 
       return () => {
         clearInterval(timer)
         window.removeEventListener('keydown', onKey, true)
         meter?.()
+        stopNow = null
         // leaving without Stop: nothing is kept (after Stop the file is already being made)
         if (!stop.disabled) cancelled = true
         if (recorder && recorder.state !== 'inactive') recorder.stop()
@@ -262,7 +272,9 @@ export default {
         }
         if (!alive) return
         const value = data().mic
-        const options = [{ value: '', label: t().micDefault }, ...devices.map((d, i) => ({ value: d.deviceId, label: d.label || `${t().micUnnamed} ${i + 1}` }))]
+        const known = devices.filter((d) => d.deviceId)
+        select.title = known.length ? '' : t().allowFirst
+        const options = [{ value: '', label: t().micDefault }, ...known.map((d, i) => ({ value: d.deviceId, label: d.label || `${t().micUnnamed} ${i + 1}` }))]
         if (value && !devices.some((d) => d.deviceId === value)) options.push({ value, label: t().micGone })
         select.replaceChildren(...options.map((o) => el('option', { value: o.value, textContent: o.label })))
         select.value = value
@@ -283,11 +295,12 @@ export default {
         if (starting) return
         starting = true
         try {
-          const stream = await openMic(data().mic).finally(() => (starting = false))
+          const stream = await openMic(data().mic, () => api.ui.notice(t().micFallback, 5000)).finally(() => (starting = false))
           // the settings were closed while the microphone was opening: let it go at once
           if (!alive) return stream.getTracks().forEach((track) => track.stop())
           void fill() // the names of the devices are only given once the microphone has been allowed
           const ctx = new AudioContext()
+          void ctx.resume()
           const analyser = ctx.createAnalyser()
           analyser.fftSize = 512
           ctx.createMediaStreamSource(stream).connect(analyser)

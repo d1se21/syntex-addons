@@ -22,6 +22,8 @@ for (const dir of readdirSync(root, { withFileTypes: true })) {
     ...(m.author ? { author: m.author } : {}),
     // an older Syntex shows that the add-on needs a newer one, instead of installing what it cannot run
     ...(m.minApi ? { minApi: m.minApi } : {}),
+    // what it asks for (the microphone): the catalog shows it before it is installed
+    ...(Array.isArray(m.permissions) && m.permissions.length ? { permissions: m.permissions } : {}),
     path: dir.name,
     files: FILES.filter((f) => existsSync(join(folder, f))),
     // what Syntex checks a download against (the text as it is read: utf-8)
