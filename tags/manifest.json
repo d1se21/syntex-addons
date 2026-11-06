@@ -1,0 +1,11 @@
+{
+  "id": "tags",
+  "name": { "ru": "Теги", "en": "Tags" },
+  "description": {
+    "ru": "#теги в тексте подсвечиваются и нажимаются: клик открывает вкладку «Теги» — все теги хранилища и заметки с выбранным, со строкой, где он стоит. Ctrl+клик ставит курсор в тег.",
+    "en": "#tags in the text are coloured and can be clicked: a click opens the Tags tab, with every tag of the vault and the notes of the chosen one, at the line it stands on. Ctrl+click puts the caret in the tag."
+  },
+  "version": "1.0.0",
+  "author": "Syntex",
+  "minApi": 8
+}

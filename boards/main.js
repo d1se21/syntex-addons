@@ -2090,10 +2090,34 @@ export default {
 
       // pictures dropped from the desktop
       canvas.addEventListener('dragover', (e) => {
-        if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+        const types = e.dataTransfer?.types ?? []
+        if (types.includes('Files') || types.includes('text/syntex-path')) {
+          e.preventDefault()
+          // (a note from the tree is put on the board, never moved: the tree keeps it)
+          if (types.includes('text/syntex-path')) e.dataTransfer.dropEffect = 'copy'
+        }
       })
       canvas.addEventListener('drop', async (e) => {
         if (!board || broken) return
+        // a note (or a picture) dragged from the tree: a card of it where it was let go
+        const fromTree = e.dataTransfer?.getData('text/syntex-path')
+        if (fromTree) {
+          e.preventDefault()
+          e.stopPropagation()
+          const at = toWorld(e.clientX, e.clientY)
+          if (/\.md$/i.test(fromTree)) addCard({ type: 'note', note: fromTree }, at, false)
+          else if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(fromTree)) {
+            const dims = await new Promise((resolve) => {
+              const img = new Image()
+              img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+              img.onerror = () => resolve({ w: 260, h: 180 })
+              img.src = urlOf(fromTree)
+            })
+            const w = Math.min(340, dims.w || 260)
+            addCard({ type: 'image', src: fromTree, w, h: Math.round((w * (dims.h || 180)) / (dims.w || 260)) }, at, false)
+          } else api.ui.notice(tt('На доску можно положить заметку или картинку', 'A note or a picture can be put on the board'))
+          return
+        }
         const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'))
         if (!files.length) return
         e.preventDefault()
@@ -2221,8 +2245,8 @@ export default {
         hint.textContent = broken
           ? tt('Данные доски повреждены, доска не изменяется: исправьте её заметку или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its note or make a new board.')
           : tt(
-              'Двойной клик по пустому месту — новая карточка. Правая кнопка мыши — меню. Колесо — масштаб, пробел или средняя кнопка — двигать поле. Кружок у края карточки тянется к другой карточке — так появляется стрелка.',
-              'Double click an empty place for a new card. Right click for the menu. The wheel zooms; Space or the middle button moves the field. Drag the dot at the edge of a card to another card to make an arrow.'
+              'Двойной клик по пустому месту — новая карточка. Правая кнопка мыши — меню. Колесо — масштаб, пробел или средняя кнопка — двигать поле. Кружок у края карточки тянется к другой карточке — так появляется стрелка. Заметки и картинки можно перетащить сюда из дерева.',
+              'Double click an empty place for a new card. Right click for the menu. The wheel zooms; Space or the middle button moves the field. Drag the dot at the edge of a card to another card to make an arrow. Notes and pictures can be dragged here from the tree.'
             )
         canvas.classList.toggle('readonly', broken)
         syncToolbar()
