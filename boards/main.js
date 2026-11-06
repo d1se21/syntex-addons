@@ -1,9 +1,13 @@
-// Boards: an interactive board in a tab of its own. Cards of several kinds (text, sticky notes, notes of the vault with
+// Boards: an interactive board in a tab of its own; each board is a file of its own kind (Boards/Name.board, its data
+// as JSON), opened by a click on it in the tree. Boards of older versions (notes with a block of data) are moved to
+// such files once.
+// Cards of several kinds (text, sticky notes, notes of the vault with
 // a preview, pictures, links, check lists, shapes, frames), arrows with labels, selection by frame or by group, undo,
 // alignment, snapping, search, a minimap, and a right-click menu on everything. Each board is a note in the "Boards"
 // folder (a fenced block with its data), so it lives in the vault, is backed up and synced with it.
 
 const FOLDER = 'Boards'
+const EXT = 'board'
 const FENCE = 'syntex-board'
 const CLIP = 'syntex-board:'
 const NS = 'http://www.w3.org/2000/svg'
@@ -54,7 +58,7 @@ const icon = (name) => {
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
-const nameOf = (path) => path.split('/').pop().replace(/\.md$/i, '')
+const nameOf = (path) => path.split('/').pop().replace(/\.(md|board)$/i, '')
 const urlOf = (path) => 'syntex://vault/' + path.split('/').map(encodeURIComponent).join('/')
 const normUrl = (u) => (/^[a-z][a-z0-9+.-]*:/i.test(u) ? u : 'https://' + u)
 const hostOf = (u) => {
@@ -78,16 +82,14 @@ const boundsOf = (cards) => {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
-/** The text of a board's note. */
+/** The text of a board's file: its data, as JSON (where it is looked at is kept by the add-on, not in the file). */
 function serialize(name, board) {
-  // (where the board is looked at is kept by the add-on, not in the note: looking around never changes the file)
+  void name
   const { view, ...content } = board
   void view
-  // the notes on the board as links: the graph and the backlinks of those notes show the board
-  const notes = [...new Set(board.cards.filter((c) => c.type === 'note' && c.note).map((c) => c.note.replace(/\.md$/i, '')))]
-  const linked = notes.length ? `\n> ${notes.map((n) => `[[${n}]]`).join(' · ')}\n` : ''
-  return `# ${name}\n\n> Syntex board. It opens in the Boards tab; its data is the block below.\n${linked}\n\`\`\`${FENCE}\n${JSON.stringify(content, null, 1)}\n\`\`\`\n`
+  return JSON.stringify({ ...content, v: 3 }, null, 1) + '\n'
 }
+
 
 /** A board read from its data (boards of version 1 are brought up to date), or null when it is damaged. */
 function normalize(b) {
@@ -102,10 +104,16 @@ function normalize(b) {
   const ids = new Set(cards.map((c) => c.id))
   const links = b.links.filter((l) => l && typeof l.id === 'string' && ids.has(l.from) && ids.has(l.to) && l.from !== l.to)
   const view = b.view && Number.isFinite(b.view.k) && Number.isFinite(b.view.x) && Number.isFinite(b.view.y) ? b.view : { x: 0, y: 0, k: 1 }
-  return { v: 2, cards, links, view, settings: { ...newBoard().settings, ...(b.settings ?? {}) } }
+  return { v: 3, cards, links, view, settings: { ...newBoard().settings, ...(b.settings ?? {}) } }
 }
 
+/** A board from the text of its file (JSON), or from a note of an older version (a block of data in it); null when damaged. */
 function parse(text) {
+  try {
+    if (text.trimStart().startsWith('{')) return normalize(JSON.parse(text))
+  } catch {
+    return null
+  }
   const m = new RegExp('```' + FENCE + '\\r?\\n([\\s\\S]*?)\\r?\\n```').exec(text)
   if (!m) return null
   try {
@@ -138,16 +146,61 @@ export default {
         () => api.ui.notice(tt('Не удалось скопировать', 'Could not copy'))
       )
     const data = () => api.data.get({ last: '' })
-    const boardPaths = () =>
-      api.vault
-        .list()
-        .filter((p) => p.startsWith(FOLDER + '/') && p.split('/').length === 2)
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    const boardPaths = () => api.vault.listFiles(EXT).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 
     // notes sent to the board while its tab is not open: added once it is
     let controller = null
     let pendingNotes = []
+    // a board file clicked while the tab is not open: shown once it is
+    let pendingOpen = null
     const openBoards = () => api.views.open('main')
+    const openBoardFile = (p) => {
+      if (controller) {
+        openBoards()
+        void controller.open(p)
+      } else {
+        pendingOpen = p
+        openBoards()
+      }
+    }
+
+    // a click on a .board file (in the tree, a link, the search) opens it here
+    api.files.handle(EXT, openBoardFile)
+
+    /**
+     * Boards of versions before 1.3 were notes (Boards/Name.md with a block of data): each is moved to Boards/Name.board
+     * once; the note goes to the recycle bin (it can be taken back from there).
+     */
+    const moveOldBoards = async () => {
+      const old = api.vault.list().filter((p) => p.startsWith(FOLDER + '/') && p.split('/').length === 2)
+      let moved = 0
+      for (const p of old) {
+        let text
+        try {
+          text = await api.vault.read(p)
+        } catch {
+          continue
+        }
+        if (!text.includes('```' + FENCE)) continue
+        const board = parse(text)
+        if (!board) continue
+        const taken = new Set(api.vault.listFiles(EXT).map((x) => x.toLowerCase()))
+        const base = p.replace(/\.md$/i, '')
+        let next = base + '.' + EXT
+        for (let i = 2; taken.has(next.toLowerCase()); i++) next = `${base} ${i}.${EXT}`
+        await api.vault.write(next, serialize(nameOf(next), board), true)
+        await files.trash(p)
+        const d = data()
+        const views = { ...(d.views ?? {}) }
+        if (views[p]) views[next] = views[p]
+        delete views[p]
+        api.data.set({ ...d, views, last: d.last === p ? next : d.last })
+        moved++
+      }
+      if (moved) api.ui.notice(tt(`Доски теперь отдельные файлы .board: перенесено ${moved}. Старые заметки — в корзине.`, `Boards are files of their own now (.board): ${moved} moved. The old notes are in the recycle bin.`), 7000)
+      return moved
+    }
+    const moving = moveOldBoards().catch((e) => api.ui.notice(e instanceof Error ? e.message : String(e), 6000))
 
     /* ====================================================================== the tab */
 
@@ -1754,15 +1807,15 @@ export default {
         select.hidden = !paths.length
         return paths
       }
-      const createBoard = async () => {
+      const createBoard = async (dir = FOLDER) => {
         const raw = await api.ui.prompt(tt('Название доски', 'Name of the board'), '')
         const name = raw?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
         if (!name) return null
-        // (writing a note does not make its folder: the first board makes "Boards")
-        if (!(await api.vault.exists(FOLDER))) await files.folder(FOLDER)
-        const taken = new Set(boardPaths())
-        let next = `${FOLDER}/${name}.md`
-        for (let i = 2; taken.has(next); i++) next = `${FOLDER}/${name} ${i}.md`
+        if (dir && !(await api.vault.exists(dir))) await files.folder(dir)
+        const taken = new Set(boardPaths().map((p) => p.toLowerCase()))
+        const at = dir ? dir + '/' : ''
+        let next = `${at}${name}.${EXT}`
+        for (let i = 2; taken.has(next.toLowerCase()); i++) next = `${at}${name} ${i}.${EXT}`
         await api.vault.write(next, serialize(nameOf(next), newBoard()), true)
         fillSelect()
         await openPath(next)
@@ -1815,7 +1868,6 @@ export default {
             await write()
           }
         },
-        { label: tt('Открыть как заметку', 'Open as a note'), disabled: !path, action: () => api.vault.open(path) },
         { label: tt('Показать в проводнике', 'Show in Explorer'), disabled: !path, action: () => void files.reveal(path) },
         { label: tt('Экспорт', 'Export'), disabled: !board, children: exportMenu() },
         { sep: true },
@@ -1855,7 +1907,7 @@ export default {
               const q = input.value.trim().toLowerCase()
               const found = api.vault
                 .list()
-                .filter((n) => !n.startsWith(FOLDER + '/') && (!q || n.toLowerCase().includes(q)))
+                .filter((n) => !q || n.toLowerCase().includes(q))
                 .slice(0, 40)
               list.replaceChildren(
                 ...(found.length
@@ -2255,12 +2307,22 @@ export default {
           for (const p of changedPaths) notes.delete(p)
           for (const c of board?.cards ?? []) if (c.type === 'note' && (listChanged || changedPaths.includes(c.note))) renderCard(c)
         },
-        flush: write
+        flush: write,
+        open: async (p) => {
+          fillSelect()
+          await openPath(p)
+          fillSelect()
+          select.value = p
+        },
+        create: (dir) => void createBoard(dir)
       }
 
+      void moving.then((moved) => moved && controller?.open(data().last && boardPaths().includes(data().last) ? data().last : boardPaths()[0] ?? '').catch(() => undefined))
       const paths = fillSelect()
       const last = data().last
-      void openPath(paths.includes(last) ? last : paths[0] ?? '').then(() => fillSelect())
+      const first = pendingOpen && paths.includes(pendingOpen) ? pendingOpen : paths.includes(last) ? last : paths[0] ?? ''
+      pendingOpen = null
+      void openPath(first).then(() => fillSelect())
       const onResize = () => (board ? (applyView(), undefined) : undefined)
       window.addEventListener('resize', onResize)
 
@@ -2287,7 +2349,20 @@ export default {
     })
     // "Add to the board" in the menu of a note in the tree
     api.menus.file((path, isFolder) =>
-      isFolder || !/\.md$/i.test(path) || path.startsWith(FOLDER + '/')
+      isFolder
+        ? [
+            {
+              label: { ru: 'Новая доска здесь…', en: 'New board here…' },
+              action: () => {
+                if (controller) controller.create(path)
+                else {
+                  openBoards()
+                  setTimeout(() => controller?.create(path), 400)
+                }
+              }
+            }
+          ]
+        : !/\.md$/i.test(path)
         ? []
         : [
             {
