@@ -24,6 +24,29 @@
       }
     },
     {
+      "id": "daily-notes",
+      "name": {
+        "ru": "Ежедневная заметка",
+        "en": "Daily notes"
+      },
+      "description": {
+        "ru": "Заметка на каждый день: Ctrl+Alt+D, кнопка слева или стартовая страница. Создаётся по шаблону в своей папке, имя — дата в выбранном виде. Команды «Предыдущая» и «Следующая» листают дни.",
+        "en": "A note for every day: Ctrl+Alt+D, the button on the left or the start page. Made from a template in a folder of its own, named by the date in the chosen form. Previous and Next go through the days."
+      },
+      "version": "1.0.0",
+      "author": "Syntex",
+      "minApi": 7,
+      "path": "daily-notes",
+      "files": [
+        "manifest.json",
+        "main.js"
+      ],
+      "hashes": {
+        "manifest.json": "27ada6d5244652b4c5e92ca9dd63e64ffed169a71a9d4f5873eaa9e8eb0e0445",
+        "main.js": "5d4ca431e086de03ac51ac92426b3e40abba171317a41997578b38418ed5cbb6"
+      }
+    },
+    {
       "id": "tab-collections",
       "name": {
         "ru": "Коллекции вкладок",
