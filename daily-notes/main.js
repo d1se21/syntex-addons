@@ -19,14 +19,19 @@ function nameFor(d, format, language) {
 
 /** The day a daily note is of, read from its name in any of the forms (or null when the name is not a date). */
 function dateOf(name) {
+  // (a day that is not in the calendar, 31.02.2026, is not a date: new Date would make it the 3rd of March)
+  const day = (y, mo, d) => {
+    const x = new Date(y, mo, d)
+    return x.getFullYear() === y && x.getMonth() === mo && x.getDate() === d ? x : null
+  }
   let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(name)
-  if (m) return new Date(+m[1], +m[2] - 1, +m[3])
+  if (m) return day(+m[1], +m[2] - 1, +m[3])
   m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(name)
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1])
+  if (m) return day(+m[3], +m[2] - 1, +m[1])
   m = /^(\d{1,2}) (\S+) (\d{4})$/.exec(name)
-  if (m && MONTHS_RU.includes(m[2])) return new Date(+m[3], MONTHS_RU.indexOf(m[2]), +m[1])
+  if (m && MONTHS_RU.includes(m[2])) return day(+m[3], MONTHS_RU.indexOf(m[2]), +m[1])
   m = /^(\S+) (\d{1,2}), (\d{4})$/.exec(name)
-  if (m && MONTHS_EN.includes(m[1])) return new Date(+m[3], MONTHS_EN.indexOf(m[1]), +m[2])
+  if (m && MONTHS_EN.includes(m[1])) return day(+m[3], MONTHS_EN.indexOf(m[1]), +m[2])
   return null
 }
 const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

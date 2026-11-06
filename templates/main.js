@@ -30,11 +30,12 @@ export default {
     const fill = (text, title) => {
       const d = new Date()
       const weekday = (ru() ? DAYS_RU : DAYS_EN)[d.getDay()]
+      // (functions, not strings: a "$&" or "$1" in the name of a note is put in as typed)
       return text
-        .replace(/\{\{\s*(title|название)\s*\}\}/gi, title)
-        .replace(/\{\{\s*(date|дата)\s*\}\}/gi, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
-        .replace(/\{\{\s*(time|время)\s*\}\}/gi, `${pad(d.getHours())}:${pad(d.getMinutes())}`)
-        .replace(/\{\{\s*(weekday|день недели)\s*\}\}/gi, weekday.charAt(0).toUpperCase() + weekday.slice(1))
+        .replace(/\{\{\s*(title|название)\s*\}\}/gi, () => title)
+        .replace(/\{\{\s*(date|дата)\s*\}\}/gi, () => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+        .replace(/\{\{\s*(time|время)\s*\}\}/gi, () => `${pad(d.getHours())}:${pad(d.getMinutes())}`)
+        .replace(/\{\{\s*(weekday|день недели)\s*\}\}/gi, () => weekday.charAt(0).toUpperCase() + weekday.slice(1))
     }
 
     /** No templates yet: the folder is made, with one to start from. */

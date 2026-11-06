@@ -2094,7 +2094,8 @@ export default {
         if (types.includes('Files') || types.includes('text/syntex-path')) {
           e.preventDefault()
           // (a note from the tree is put on the board, never moved: the tree keeps it)
-          if (types.includes('text/syntex-path')) e.dataTransfer.dropEffect = 'copy'
+          // (an effect the source does not allow would make the browser refuse the drop)
+          if (types.includes('text/syntex-path')) e.dataTransfer.dropEffect = /copy|all|uninitialized/i.test(e.dataTransfer.effectAllowed) ? 'copy' : 'move'
         }
       })
       canvas.addEventListener('drop', async (e) => {

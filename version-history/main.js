@@ -7,13 +7,32 @@ const DIR = '.syntex/history'
 const MAX_NOTE = 2 * 1024 * 1024
 const pad = (n) => String(n).padStart(2, '0')
 
-/** The file of the versions of a note. */
-const fileOf = (path) => DIR + '/' + path.replace(/\.md$/i, '').replace(/[\\/]/g, '__').replace(/[:*?"<>|]/g, '_') + '.json'
+/**
+ * The name of the file of the versions of a note: its path with the characters a file name cannot hold written as
+ * %XX (one note, one file: a/b.md and a__b.md never share one).
+ */
+const nameOf = (path) => path.replace(/\\/g, '/').replace(/\.md$/i, '').replace(/[%/:*?"<>|]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')) + '.json'
+const fileOf = (path) => DIR + '/' + nameOf(path)
 
 const el = (tag, props = {}, children = []) => {
   const node = Object.assign(document.createElement(tag), props)
   for (const c of children) node.append(c)
   return node
+}
+
+/** How many lines of `a` are not in `b`, and of `b` not in `a` (for the list: quick even for big notes). */
+function countChanges(a, b) {
+  const left = new Map()
+  for (const l of a.split('\n')) left.set(l, (left.get(l) ?? 0) + 1)
+  let add = 0
+  for (const l of b.split('\n')) {
+    const k = left.get(l) ?? 0
+    if (k) left.set(l, k - 1)
+    else add++
+  }
+  let del = 0
+  for (const k of left.values()) del += k
+  return { add, del }
 }
 
 /** What changed from `a` to `b`, line by line: [{ kind: 'same' | 'add' | 'del', text }] (a plain LCS; big texts by blocks). */
@@ -94,6 +113,41 @@ export default {
     api.events.on('note-open', (path) => path && void keep(path, false))
     api.events.on('note-save', (path) => void keep(path, false))
 
+    // a note renamed or moved in Syntex takes its versions along (API 8); one sent to the recycle bin keeps them,
+    // for when it comes back
+    const follow = (from, to) =>
+      inQueue(from, async () => {
+        if (!(await api.vault.exists(fileOf(from)))) return
+        const there = await readVersions(to)
+        if (!there.length) {
+          if (await api.vault.exists(fileOf(to))) return
+          await api.vault.rename(fileOf(from), nameOf(to).replace(/\.json$/, ''))
+          return
+        }
+        // (both have versions: one list, by time)
+        const all = [...there, ...(await readVersions(from))].sort((a, b) => a.at - b.at)
+        while (all.length > settings().keep) all.shift()
+        await writeVersions(to, all)
+        await api.vault.write(fileOf(from), JSON.stringify({ path: from, versions: [] }), true)
+      }).catch(() => undefined)
+    if (api.apiVersion >= 8)
+      api.events.on('path-move', ({ from, to }) => {
+        if (!to || from === to || from.startsWith('.syntex/')) return
+        if (/\.md$/i.test(from)) {
+          void follow(from, to).then(() => {
+            if (shownPath === from) {
+              shownPath = to
+              void draw()
+            }
+          })
+          return
+        }
+        // a folder: the notes now in it were in the old one (once the tree is read again)
+        setTimeout(() => {
+          for (const p of api.vault.list()) if (p.startsWith(to + '/')) void follow(from + p.slice(to.length), p)
+        }, 1500)
+      })
+
     /* ---------- the tab of the versions ---------- */
     let shownPath = null
     let draw = async () => undefined
@@ -141,9 +195,7 @@ export default {
         list.replaceChildren(
           ...versions
             .map((v, i) => {
-              const d = diffLines(v.text, now)
-              const add = d.filter((x) => x.kind === 'add').length
-              const del = d.filter((x) => x.kind === 'del').length
+              const { add, del } = countChanges(v.text, now)
               const same = v.text === now
               const row = el('button', { className: 'vh-row' + (i === chosen ? ' on' : '') }, [
                 el('span', { className: 'vh-when', textContent: when(v.at) }),

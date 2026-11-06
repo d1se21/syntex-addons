@@ -134,7 +134,9 @@ export default {
             const head = u.state.selection.main.head
             if (u.docChanged) open.from = u.changes.mapPos(open.from)
             const q = head > open.from ? u.state.sliceDoc(open.from, head) : ''
-            if (head <= open.from || !q.startsWith('/') || /\s/.test(q) || q.length > 30) close()
+            // (a space may be part of the query, «/сегодняшняя заметка»; "/ ", two spaces or a new line end it;
+            // what fits nothing closes it when drawn)
+            if (head <= open.from || !q.startsWith('/') || /^\/\s|\s\s|\n/.test(q) || q.length > 30) close()
             // (drawn after the update: the editor may not be measured while it updates)
             else requestAnimationFrame(draw)
             return
