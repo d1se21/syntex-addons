@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Доски лежат в папке «Boards» как обычные заметки. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Boards are kept as ordinary notes in the \"Boards\" folder. Ctrl+Alt+B opens it."
       },
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "Syntex",
       "minApi": 6,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "fbb99f2a42d800273f99a19e407706fe135797175dfbccd1c4e75d26c8f310a9",
-        "main.js": "810a6f84ac5b974ed4e1286ce0fbbf1a4fc34cb21af3f18989fd7699286bcd7a"
+        "manifest.json": "6fb41f8189c290345c2b280da6e1c84dc2e6f1e229f8d5bd73d699fa810b5133",
+        "main.js": "cbd06b815926ce9f4d69a0f93c471a51bde2c797fbe34ad5b4412397a07bbce9"
       }
     },
     {
