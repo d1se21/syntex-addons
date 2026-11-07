@@ -2,9 +2,10 @@
 // name: its chip stands before its first tab (a click folds it, a right click opens its editor; it is closed from
 // it), and a line of its colour runs under its tabs; the right-click menu of a tab of it folds or closes it too.
 // The chip drags the whole collection (let go on another collection, it goes before or after it, never inside).
-// A dragged tab held for a moment over another tab joins that one's collection, or makes a new collection with it;
-// a tab dragged out of the run leaves it, a tab dropped inside the run joins it. The collections are kept with the
-// add-on's data, by tab id.
+// A tab dragged and let go on a tab of a collection joins it, let go outside of every collection it leaves its own
+// (with Syntex before API 9: a tab held for a moment over another tab joins that one's collection, or makes a new
+// one with it). A tab dragged out of the run leaves it, a tab dropped inside the run joins it. In the book style of
+// tabs it is the same with the spines. The collections are kept with the add-on's data, by tab id.
 
 const COLORS = [
   { id: 'grey', value: '#a3a9b3', ru: 'Серый', en: 'Grey' },
@@ -489,7 +490,20 @@ export default {
       window.removeEventListener('drop', onDrop, true)
       window.removeEventListener('dragend', onDragEnd, true)
     })
-    api.tabs.onHold((dragged, target) => {
+    // Syntex with API 9 tells where a dragged tab was let go (in the strip, or on a spine or a page of the book): the
+    // tab is part of the collection it was let go on, at once, and of none when let go outside of every collection.
+    // Holding a tab over another one then changes nothing: a tab let go next to a collection never makes a new one.
+    if (api.tabs.onDrop) {
+      api.tabs.onDrop((dragged, target) => {
+        const there = target ? collectionOf(target) : undefined
+        const own = collectionOf(dragged)
+        if (there === own) return
+        takeOut(dragged)
+        if (there) there.tabs.push(dragged)
+        save()
+        draw()
+      })
+    } else api.tabs.onHold((dragged, target) => {
       const there = collectionOf(target)
       if (there?.tabs.includes(dragged)) return
       if (!held) {

@@ -104,7 +104,7 @@
         "ru": "Вкладки собираются в цветные коллекции, как группы вкладок в браузере: название, цвет, свернуть, новая вкладка в коллекции, разгруппировать, закрыть все. Всё — в меню вкладки по правой кнопке.",
         "en": "Gather tabs into coloured collections, like tab groups in a browser: a name, a colour, fold, a new tab in the collection, ungroup, close them all. All in the right-click menu of a tab."
       },
-      "version": "1.4.3",
+      "version": "1.5.0",
       "author": "Syntex",
       "minApi": 6,
       "path": "tab-collections",
@@ -113,8 +113,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "e02dd47e7ad5ee94a14947a4134de9828c123cf63bf9a360241e6beb06af70ba",
-        "main.js": "d1c13eed9b96b5e3cfd018f0304369d9ec964a45ed4e737d9f89213ac460300c"
+        "manifest.json": "39fdf6adaabe8c28b7d981f1517dda5087a113981b6d04ea5f9d210ba55c4c71",
+        "main.js": "1e12fb2de6c297cabad09c25ef519aca4376529ced3b8fc825c30460122b5d47"
       }
     },
     {
