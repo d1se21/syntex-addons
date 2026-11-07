@@ -47,6 +47,31 @@
       }
     },
     {
+      "id": "more-themes",
+      "name": {
+        "ru": "Ещё темы",
+        "en": "More Themes"
+      },
+      "description": {
+        "ru": "Новые цвета для Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Сепия и высокий контраст. Тёмная и светлая тема выбираются отдельно в настройках аддона; какая работает сейчас, решает тема Syntex (тёмная, светлая или как в системе).",
+        "en": "New colours for Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Sepia and high contrast. The dark and the light theme are chosen apart in the add-on's settings; which one is on is decided by the theme of Syntex (dark, light or as the system)."
+      },
+      "version": "1.0.0",
+      "author": "Syntex",
+      "minApi": 8,
+      "path": "more-themes",
+      "files": [
+        "manifest.json",
+        "main.js",
+        "styles.css"
+      ],
+      "hashes": {
+        "manifest.json": "385a3598a1e88d6f451a010bb7dd82ee0adb1e807931d08eac5fd5e203266040",
+        "main.js": "49f4ee88312ff585a1545b0c69bd6b647706b163222c8713eb5aab50b9a60b0e",
+        "styles.css": "7aadfb0ca77be2e780d6924bca76d37a604d2d4491ddf93037d963d93684bb53"
+      }
+    },
+    {
       "id": "slash-commands",
       "name": {
         "ru": "Команды через /",
