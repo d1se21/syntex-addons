@@ -2318,8 +2318,9 @@ export default {
           for (const p of paths) if (!known.has(p)) addCard({ type: 'note', note: p }, null, false)
         },
         externalChange: async (changedPaths) => {
-          if (!path || !changedPaths.includes(path)) fillSelect()
-          else if (!dirty && !editing) {
+          // (the list of boards always: the open one may have just come under a new name)
+          fillSelect()
+          if (path && changedPaths.includes(path) && !dirty && !editing) {
             try {
               const text = await api.vault.read(path)
               if (text !== lastWritten && !written.includes(text) && !dirty && !editing) {
@@ -2338,6 +2339,36 @@ export default {
           for (const c of board?.cards ?? []) if (c.type === 'note' && (listChanged || changedPaths.includes(c.note))) renderCard(c)
         },
         flush: write,
+        /**
+         * The board's file (or a folder above it) was renamed, moved or sent to the recycle bin in Syntex - in the tree,
+         * say, not in the board's own menu: the board follows it. Otherwise the next save would write the file again
+         * under its old name.
+         */
+        moved: (from, to) => {
+          if (!path || (path !== from && !path.startsWith(from + '/'))) return
+          const was = path
+          if (to === null) {
+            dirty = false
+            clearTimeout(saveTimer)
+            saveTimer = null
+            path = ''
+            const left = boardPaths().filter((p) => p !== was && !p.startsWith(from + '/'))
+            void openPath(left[0] ?? '').then(() => fillSelect())
+            return
+          }
+          const next = to + was.slice(from.length)
+          path = next
+          const d = data()
+          const views = { ...(d.views ?? {}) }
+          if (views[was]) views[next] = views[was]
+          delete views[was]
+          api.data.set({ ...d, views, last: d.last === was ? next : d.last })
+          // (the tree is read again a moment later: the list of boards follows then)
+          setTimeout(() => {
+            fillSelect()
+            if (path === next) select.value = next
+          }, 0)
+        },
         open: async (p) => {
           fillSelect()
           await openPath(p)
@@ -2406,6 +2437,14 @@ export default {
           ]
     )
     api.events.on('vault-change', (paths) => void controller?.externalChange(paths))
+    api.events.on('path-move', ({ from, to }) => {
+      controller?.moved(from, to)
+      // (the tab is closed: the board shown last is still found under its new name next time)
+      if (!controller) {
+        const d = data()
+        if (d.last && (d.last === from || d.last.startsWith(from + '/'))) api.data.set({ ...d, last: to === null ? '' : to + d.last.slice(from.length) })
+      }
+    })
     api.onDispose(() => {
       void controller?.flush()
       controller = null

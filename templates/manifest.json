@@ -5,7 +5,7 @@
     "ru": "Заметки папки «Шаблоны» — шаблоны: «Вставить шаблон» (Ctrl+Alt+T, меню «Вставка») кладёт шаблон на место курсора, «Новая заметка из шаблона» создаёт заметку. {{название}}, {{дата}}, {{время}}, {{день недели}} заполняются сами.",
     "en": "The notes of the Templates folder are templates: Insert a template (Ctrl+Alt+T, the Insert menu) puts one at the caret, New note from a template makes a note of it. {{title}}, {{date}}, {{time}}, {{weekday}} are filled in."
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Syntex",
   "minApi": 7
 }

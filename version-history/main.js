@@ -88,10 +88,15 @@ export default {
       return run.finally(() => queues.get(path) === run && queues.delete(path))
     }
 
+    // When the last version of each note was kept: a save within the interval reads nothing (the file of the versions
+    // holds up to 100 copies of the note, and a note is saved after every pause in typing)
+    const keptAt = new Map()
+
     /** Keep the text of the note as a version: always (force), or when the last one is older than the interval. */
     const keep = (path, force = false) =>
       inQueue(path, async () => {
         if (!/\.md$/i.test(path)) return
+        if (!force && keptAt.has(path) && Date.now() - keptAt.get(path) < settings().every * 60_000) return
         let text
         try {
           text = await api.vault.read(path)
@@ -101,9 +106,11 @@ export default {
         if (text.length > MAX_NOTE) return
         const versions = await readVersions(path)
         const last = versions[versions.length - 1]
+        if (last) keptAt.set(path, last.at)
         if (last && last.text === text) return
         if (!force && last && Date.now() - last.at < settings().every * 60_000) return
         versions.push({ at: Date.now(), text })
+        keptAt.set(path, versions[versions.length - 1].at)
         while (versions.length > settings().keep) versions.shift()
         await writeVersions(path, versions)
         if (shownPath === path) void draw()
@@ -117,6 +124,8 @@ export default {
     // for when it comes back
     const follow = (from, to) =>
       inQueue(from, async () => {
+        keptAt.delete(from)
+        keptAt.delete(to)
         if (!(await api.vault.exists(fileOf(from)))) return
         const there = await readVersions(to)
         if (!there.length) {

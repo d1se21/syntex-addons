@@ -5,7 +5,7 @@
     "ru": "Пока вы пишете, Syntex тихо сохраняет версии заметки (раз в 10 минут правки и при открытии). «Версии заметки» (Ctrl+Alt+H, меню текста или дерева) показывает их по времени, что изменилось, и возвращает нужную. Версии лежат в папке заметок (.syntex/history).",
     "en": "While you write, versions of the note are kept quietly (every 10 minutes of editing, and when it is opened). Versions of the note (Ctrl+Alt+H, the menu of the text or of the tree) lists them by time, shows what changed and puts one back. They live in the notes folder (.syntex/history)."
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Syntex",
   "minApi": 7
 }

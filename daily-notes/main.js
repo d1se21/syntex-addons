@@ -46,6 +46,8 @@ export default {
   onload(api) {
     const ru = () => api.language() === 'ru'
     const tt = (r, e) => (ru() ? r : e)
+    // (the folder is named once, in the language of the window then: a change of the language must not lose the daily notes)
+    if (typeof api.data.get({}).folder !== 'string') api.data.set({ ...api.data.get({}), folder: tt('Ежедневные', 'Daily') })
     const settings = () => ({ folder: tt('Ежедневные', 'Daily'), format: FORMATS[0], template: '', ...api.data.get({}) })
     const setSettings = (patch) => api.data.set({ ...settings(), ...patch })
     const folderOf = () => settings().folder.replace(/^\/+|\/+$/g, '').trim()

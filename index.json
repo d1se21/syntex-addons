@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Каждая доска — отдельный файл .board (по умолчанию в папке «Boards»), открывается кликом в дереве. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Each board is a .board file of its own (in the \"Boards\" folder by default), opened by a click in the tree. Ctrl+Alt+B opens it."
       },
-      "version": "1.3.1",
+      "version": "1.3.2",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "c8025a73b998fa1834f55395956037dd4e2e9e004fbee716bfb84d725be0d320",
-        "main.js": "69c95b2e87caa3213b0c081574150d75dff1e1cdea085a3b4b90acbb572b10c8"
+        "manifest.json": "9135b81b889d160713a1d2f47192192b3ec41c9a9a48a828e68ae798835ec9b2",
+        "main.js": "a9dea204834e63c5880d0a4ceee5f8676657728e8afe221f769e4534bb6e83fd"
       }
     },
     {
@@ -33,7 +33,7 @@
         "ru": "Заметка на каждый день: Ctrl+Alt+D, кнопка слева или стартовая страница. Создаётся по шаблону в своей папке, имя — дата в выбранном виде. Команды «Предыдущая» и «Следующая» листают дни.",
         "en": "A note for every day: Ctrl+Alt+D, the button on the left or the start page. Made from a template in a folder of its own, named by the date in the chosen form. Previous and Next go through the days."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 7,
       "path": "daily-notes",
@@ -42,8 +42,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "4aec0823893b0aa97445f8c71f43acddccda2293b46e65497bd8f7a1588e27ac",
-        "main.js": "49a0051f5fcff13455baebd92775d69c6fcc73882607ac1b1de1e64d63e11186"
+        "manifest.json": "39baccf9e159777d63548e291d17e4c898606f8da752f53467b57c03e103b93f",
+        "main.js": "b26f9781821767b12ecdd70753376124fd1da6953d749e54b7648dbf02659510"
       }
     },
     {
@@ -81,7 +81,7 @@
         "ru": "«/» в начале строки открывает список того, что можно вставить: заголовки, списки, задачу, цитату, таблицу, код, выноску, разделитель, ссылку, дату и время, а также шаблон, голосовую и ежедневную заметку, если эти аддоны включены. Набор фильтрует, ↑↓ и Enter выбирают.",
         "en": "\"/\" at the start of a line opens a list of what can be put there: headings, lists, a task, a quote, a table, code, a callout, a divider, a link, the date and time, and a template, a voice note or today's note when those add-ons are on. Typing filters, ↑↓ and Enter choose."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 8,
       "path": "slash-commands",
@@ -90,8 +90,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "b10178f99dca70744a6203ed1d93868f76e270b5af70392b944294bd760f1bd6",
-        "main.js": "d2bb4ef5722deb80324b26d0d91cd00209b73918a07bca9f3664882266107892"
+        "manifest.json": "90f4855556d6bd13065e40513b8327636cb47defd57bfe92ee44528a65c44f91",
+        "main.js": "4fa48fbf43a213392b6f9530dba6e2c09bd4756748681017c5a07f621d20f543"
       }
     },
     {
@@ -150,7 +150,7 @@
         "ru": "Заметки папки «Шаблоны» — шаблоны: «Вставить шаблон» (Ctrl+Alt+T, меню «Вставка») кладёт шаблон на место курсора, «Новая заметка из шаблона» создаёт заметку. {{название}}, {{дата}}, {{время}}, {{день недели}} заполняются сами.",
         "en": "The notes of the Templates folder are templates: Insert a template (Ctrl+Alt+T, the Insert menu) puts one at the caret, New note from a template makes a note of it. {{title}}, {{date}}, {{time}}, {{weekday}} are filled in."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 7,
       "path": "templates",
@@ -159,8 +159,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "c0d19b6457b11d716f9eff769c23c9797cb2b60abb8591201db8c89a85570347",
-        "main.js": "409b14bdf2863632dcd95c88234d0dd7a705b9b14602367628ad8d654a7fc02e"
+        "manifest.json": "bde698efb336569ac39fbb0a20558cea080391084d33d1ffb4150d90270290bc",
+        "main.js": "641c2fff89b9b38e4d866eff4594f1343c4994fa15e9a05a5109d13c69261cc1"
       }
     },
     {
@@ -173,7 +173,7 @@
         "ru": "Пока вы пишете, Syntex тихо сохраняет версии заметки (раз в 10 минут правки и при открытии). «Версии заметки» (Ctrl+Alt+H, меню текста или дерева) показывает их по времени, что изменилось, и возвращает нужную. Версии лежат в папке заметок (.syntex/history).",
         "en": "While you write, versions of the note are kept quietly (every 10 minutes of editing, and when it is opened). Versions of the note (Ctrl+Alt+H, the menu of the text or of the tree) lists them by time, shows what changed and puts one back. They live in the notes folder (.syntex/history)."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 7,
       "path": "version-history",
@@ -182,8 +182,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "cf06f7b50551a1e5ab18792961d54782fe550b49bc128d14a83bf7b0d6f40dbe",
-        "main.js": "03a8b61d98fc9b3a3dd2f4a3873de586fb9497f77e3510cdf21ca35110e75687"
+        "manifest.json": "6ebe75117fa75809fd657a2067775e2f3830edae90b0c46cb0dddfcf5aaf6b87",
+        "main.js": "d5c4a46ff4f959a4175e62a4c564296bf34085d4a66a6e48e7402472d1d6a201"
       }
     },
     {

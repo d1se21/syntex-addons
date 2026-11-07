@@ -15,6 +15,8 @@ export default {
   onload(api) {
     const ru = () => api.language() === 'ru'
     const tt = (r, e) => (ru() ? r : e)
+    // (the folder is named once, in the language of the window then: a change of the language must not lose the templates)
+    if (typeof api.data.get({}).folder !== 'string') api.data.set({ ...api.data.get({}), folder: tt('Шаблоны', 'Templates') })
     const settings = () => ({ folder: tt('Шаблоны', 'Templates'), ...api.data.get({}) })
     const folder = () => settings().folder.replace(/^\/+|\/+$/g, '').trim()
     const templates = () => {

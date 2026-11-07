@@ -14,6 +14,7 @@ export default {
   onload(api) {
     const { ViewPlugin, keymap, EditorView } = api.lib.view
     const { Prec } = api.lib.state
+    const { syntaxTree } = api.lib.language
     const ru = () => api.language() === 'ru'
     const tt = (r, e) => (ru() ? r : e)
 
@@ -146,9 +147,10 @@ export default {
           if (head < 1 || u.state.sliceDoc(head - 1, head) !== '/') return
           const before = head >= 2 ? u.state.sliceDoc(head - 2, head - 1) : ''
           if (before && !/\s/.test(before)) return
-          // (not inside code: there "/" is just a character)
+          // (not inside code: there "/" is just a character - in a fenced or indented block, or `inline code`)
           const line = u.state.doc.lineAt(head)
           if (/^\s*(```|~~~)/.test(line.text)) return
+          for (let n = syntaxTree(u.state).resolveInner(head - 1, 1); n; n = n.parent) if (/^(FencedCode|CodeBlock|InlineCode|CodeText)$/.test(n.name)) return
           open = { view: u.view, from: head - 1, chosen: 0, shown: [], box: el('div', { className: 'sl-box' }) }
           document.body.append(open.box)
           requestAnimationFrame(draw)
