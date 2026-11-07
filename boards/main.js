@@ -350,7 +350,11 @@ export default {
         const { x, y, k } = board.view
         world.style.transform = `translate(${x}px, ${y}px) scale(${k})`
         canvas.dataset.grid = board.settings.grid
-        canvas.style.backgroundSize = `${GRID * k}px ${GRID * k}px`
+        // the grid follows the zoom: when the cells get too small on the screen, every next
+        // step takes twice as many of them, so far away there is no dense mesh
+        let step = GRID * k
+        while (step < 14) step *= 2
+        canvas.style.backgroundSize = `${step}px ${step}px`
         canvas.style.backgroundPosition = `${x}px ${y}px`
         zoomLabel.textContent = Math.round(k * 100) + '%'
         placeFloat()
@@ -931,7 +935,8 @@ export default {
           editing = null
           const isNew = fresh.delete(card.id)
           const empty = !(cancel ? card.text ?? '' : field.value).replace(/\[( |x)\]/gi, '').trim()
-          if (isNew && empty && card.type !== 'frame') {
+          // an empty new card is taken back only by Esc; leaving it by a click elsewhere keeps it
+          if (cancel && isNew && empty && card.type !== 'frame') {
             // (and its step of undo with it: making an empty card and taking it back is no step at all)
             board.cards = board.cards.filter((c) => c.id !== card.id)
             board.links = board.links.filter((l) => l.from !== card.id && l.to !== card.id)

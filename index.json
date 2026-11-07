@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Каждая доска — отдельный файл .board (по умолчанию в папке «Boards»), открывается кликом в дереве. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Each board is a .board file of its own (in the \"Boards\" folder by default), opened by a click in the tree. Ctrl+Alt+B opens it."
       },
-      "version": "1.3.0",
+      "version": "1.3.1",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "dc4e222deffef692e546f59db9c8e416cc9af5aff4bb78174d4c0f8467a8d851",
-        "main.js": "31fd62b8eb6980d1b7413eae96e7f9db7887b6d9f9848e568937b56fa722cfbc"
+        "manifest.json": "c8025a73b998fa1834f55395956037dd4e2e9e004fbee716bfb84d725be0d320",
+        "main.js": "69c95b2e87caa3213b0c081574150d75dff1e1cdea085a3b4b90acbb572b10c8"
       }
     },
     {
