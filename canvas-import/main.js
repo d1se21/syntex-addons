@@ -49,12 +49,68 @@ function todoLines(text) {
   return out
 }
 
+/** A path as it is compared: forward slashes, no leading ./ or /, one form of Unicode, any case. */
+const keyOf = (p) => p.normalize('NFC').toLowerCase()
+function cleanPath(file) {
+  let p = file.trim().replace(/\\/g, '/')
+  if (/%[0-9a-f]{2}/i.test(p)) {
+    try {
+      p = decodeURIComponent(p)
+    } catch {
+      // a % that is part of the name
+    }
+  }
+  return p.replace(/^(\.\/|\/)+/, '').normalize('NFC')
+}
+
+/**
+ * What a `file` of a .canvas is in this vault: its vault path, or null when there is no such file.
+ * The path in a .canvas starts at the root of the vault it was made in (Obsidian's), which here may be a folder
+ * inside the vault, or the file may have been moved: so it is looked for as written, then from each folder above the
+ * .canvas, then as the end of a path, then by its name alone; of several, the one nearest to the .canvas.
+ */
+export function makeResolver(allFiles, canvasPath = '') {
+  const byKey = new Map(allFiles.map((p) => [keyOf(p), p]))
+  const folders = []
+  const parts = canvasPath.split('/').slice(0, -1)
+  for (let i = parts.length; i > 0; i--) folders.push(parts.slice(0, i).join('/'))
+  const canvasKey = keyOf(canvasPath)
+  // how many folders a path shares with the .canvas
+  const near = (p) => {
+    const a = keyOf(p).split('/')
+    const b = canvasKey.split('/')
+    let i = 0
+    while (i < a.length - 1 && i < b.length - 1 && a[i] === b[i]) i++
+    return i
+  }
+  const nearest = (list) => (list.length ? list.reduce((best, p) => (near(p) > near(best) ? p : best)) : null)
+  return (file) => {
+    const p = cleanPath(str(file))
+    if (!p) return null
+    const tries = /\.[^./]+$/.test(p) ? [p] : [p, p + '.md']
+    for (const t of tries) {
+      const k = keyOf(t)
+      if (byKey.has(k)) return byKey.get(k)
+      for (const f of folders) {
+        const hit = byKey.get(keyOf(f + '/' + t))
+        if (hit) return hit
+      }
+      const tail = nearest(allFiles.filter((x) => keyOf(x).endsWith('/' + k)))
+      if (tail) return tail
+      const name = '/' + k.split('/').pop()
+      const named = nearest(allFiles.filter((x) => ('/' + keyOf(x)).endsWith(name)))
+      if (named) return named
+    }
+    return null
+  }
+}
+
 /**
  * The data of a board (as the Interactive board keeps it in a .board file) made from the text of a .canvas file.
- * `exists(path)` says whether a note or file is in the vault (a file node pointing nowhere becomes a text card).
- * Throws when the text is not a JSON Canvas.
+ * `resolve(file)` gives the vault path of a file the .canvas points to, or null when it is not in the vault (such a
+ * node becomes a text card with its name). Throws when the text is not a JSON Canvas.
  */
-export function canvasToBoard(text, exists = () => true) {
+export function canvasToBoard(text, resolve = (f) => cleanPath(str(f)) || null) {
   let src
   try {
     src = JSON.parse(text.replace(/^﻿/, '') || '{}')
@@ -87,9 +143,10 @@ export function canvasToBoard(text, exists = () => true) {
       const todo = todoLines(t)
       card = todo ? { type: 'todo', text: todo.join('\n') } : { type: 'text', text: t }
     } else if (n.type === 'file') {
-      const file = str(n.file).replace(/^\/+/, '')
-      if (/\.md$/i.test(file) && exists(file)) card = { type: 'note', note: file }
-      else if (IMAGE.test(file) && exists(file)) card = { type: 'image', src: file }
+      const file = str(n.file)
+      const found = resolve(file)
+      if (found && /\.md$/i.test(found)) card = { type: 'note', note: found }
+      else if (found && IMAGE.test(found)) card = { type: 'image', src: found }
       // a file the board has no card for (a PDF, another canvas) or that is not in the vault: its name, as text
       else card = { type: 'text', text: '📎 ' + (file || '?') }
     } else if (n.type === 'link') {
@@ -240,7 +297,7 @@ export default {
      * The board for a .canvas: the one made before when the .canvas has not changed since, else a new one
      * (or, when asked, that one made again). Its path, or null when the .canvas could not be read.
      */
-    const convert = async (canvas, { quiet = false, ask = true } = {}) => {
+    const convert = async (canvas, { quiet = false, ask = true, force = false } = {}) => {
       let text
       try {
         text = await api.vault.read(canvas)
@@ -252,15 +309,20 @@ export default {
       const before = data().made[canvas]
       const files = known()
       const had = before && files.has(before.board.toLowerCase()) ? before.board : null
-      if (had && before.sig === sig) return had
+      if (had && before.sig === sig && !force) return had
       let target = null
       if (had && ask) {
         const again = await api.ui.confirm(
-          tt('Canvas изменился', 'The canvas changed'),
-          tt(
-            `«${baseName(canvas)}» изменился после того, как из него сделали доску «${baseName(had)}». Сделать её заново? Правки на доске пропадут.`,
-            `"${baseName(canvas)}" changed since the board "${baseName(had)}" was made from it. Make the board again? Changes made on the board are lost.`
-          ),
+          force ? tt('Сделать доску заново', 'Make the board again') : tt('Canvas изменился', 'The canvas changed'),
+          force
+            ? tt(
+                `Из «${baseName(canvas)}» уже сделана доска «${baseName(had)}». Сделать её заново? Правки на доске пропадут.`,
+                `The board "${baseName(had)}" was already made from "${baseName(canvas)}". Make it again? Changes made on the board are lost.`
+              )
+            : tt(
+                `«${baseName(canvas)}» изменился после того, как из него сделали доску «${baseName(had)}». Сделать её заново? Правки на доске пропадут.`,
+                `"${baseName(canvas)}" changed since the board "${baseName(had)}" was made from it. Make the board again? Changes made on the board are lost.`
+              ),
           tt('Сделать заново', 'Make again')
         )
         if (!again) return had
@@ -268,7 +330,7 @@ export default {
       }
       let board
       try {
-        board = canvasToBoard(text, (p) => files.has(p.toLowerCase()))
+        board = canvasToBoard(text, makeResolver(api.vault.listFiles(), canvas))
       } catch {
         if (!quiet) api.ui.notice(tt(`«${baseName(canvas)}» — не JSON Canvas`, `"${baseName(canvas)}" is not a JSON Canvas`), 5000)
         return null
@@ -279,8 +341,8 @@ export default {
       return target
     }
 
-    const openCanvas = async (canvas) => {
-      const board = await convert(canvas)
+    const openCanvas = async (canvas, force = false) => {
+      const board = await convert(canvas, { force })
       if (!board) return
       if (hasBoards()) api.vault.open(board)
       else noBoards()
@@ -329,7 +391,7 @@ export default {
         if (!canvasesIn(path).length) return []
         return [{ label: { ru: 'Сделать доски из .canvas в папке', en: 'Make boards of the .canvas files here' }, action: () => void convertMany(canvasesIn(path)) }]
       }
-      if (/\.canvas$/i.test(path)) return [{ label: { ru: 'Конвертировать в доску', en: 'Convert to a board' }, action: () => void openCanvas(path) }]
+      if (/\.canvas$/i.test(path)) return [{ label: { ru: 'Конвертировать в доску', en: 'Convert to a board' }, action: () => void openCanvas(path, true) }]
       if (/\.board$/i.test(path)) return [{ label: { ru: 'Сохранить как .canvas', en: 'Save as .canvas' }, action: () => void exportBoard(path) }]
       return []
     })

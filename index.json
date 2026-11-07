@@ -33,7 +33,7 @@
         "ru": "Открывает доски JSON Canvas (.canvas, как в Obsidian) в «Интерактивной доске»: клик по .canvas в дереве делает рядом доску .board и открывает её, сам .canvas не меняется. Текст, заметки, картинки, ссылки, группы (рамки) и стрелки с подписями и цветами переносятся. Меню файла: «Конвертировать в доску», для папки — все .canvas в ней, для доски — «Сохранить как .canvas». Нужен аддон «Интерактивная доска».",
         "en": "Opens JSON Canvas boards (.canvas, as in Obsidian) in the Interactive board: a click on a .canvas in the tree makes a .board next to it and opens it; the .canvas itself is left as it is. Text, notes, pictures, links, groups (frames) and arrows with their labels and colours come over. File menu: \"Convert to a board\", for a folder every .canvas in it, for a board \"Save as .canvas\". Needs the Interactive board add-on."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 8,
       "path": "canvas-import",
@@ -42,8 +42,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "a59e75170c24718a629b045c8907e12cf0bc56164c5ff2ab77a57b5a8d0e623d",
-        "main.js": "54f3d026a2de2bda37d7571ba8d362387910c28a7d9c893da3187bea4b92dddb"
+        "manifest.json": "d6bc12efbb0a348fb83f6ee6b4f9f4c498ae894ecc471b1bf6ea4e99292c4aa4",
+        "main.js": "7ac99cfb74194688e31f95e5b07d85e8f121ff3cf4b599d9946b5372225e0652"
       }
     },
     {
