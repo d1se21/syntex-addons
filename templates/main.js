@@ -151,7 +151,13 @@ export default {
           const input = el('input', { className: 'tp-input', value: settings().folder, spellcheck: false })
           const save = () => api.data.set({ ...settings(), folder: input.value.trim() })
           input.onchange = save
-          input.onkeydown = (e) => e.key === 'Enter' && (save(), input.blur())
+          input.onkeydown = (e) => {
+            // (a handler that returns false stops the key: only Enter does something here, every other key types)
+            if (e.key === 'Enter') {
+              save()
+              input.blur()
+            }
+          }
           box.append(input)
         }
       }

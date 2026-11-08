@@ -5,7 +5,7 @@
     "ru": "Заметка на каждый день: Ctrl+Alt+D, кнопка слева или стартовая страница. Создаётся по шаблону в своей папке, имя — дата в выбранном виде. Команды «Предыдущая» и «Следующая» листают дни.",
     "en": "A note for every day: Ctrl+Alt+D, the button on the left or the start page. Made from a template in a folder of its own, named by the date in the chosen form. Previous and Next go through the days."
   },
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Syntex",
   "minApi": 7
 }

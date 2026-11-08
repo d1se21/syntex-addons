@@ -385,7 +385,10 @@ export default {
             save()
             draw()
           }
-          name.onkeydown = (e) => e.key === 'Enter' && close()
+          name.onkeydown = (e) => {
+            // (a handler that returns false stops the key: only Enter does something here, every other key types)
+            if (e.key === 'Enter') close()
+          }
           const colors = el(
             'div',
             { className: 'tc-colors' },

@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Каждая доска — отдельный файл .board (по умолчанию в папке «Boards»), открывается кликом в дереве. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Each board is a .board file of its own (in the \"Boards\" folder by default), opened by a click in the tree. Ctrl+Alt+B opens it."
       },
-      "version": "1.3.2",
+      "version": "1.3.3",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "9135b81b889d160713a1d2f47192192b3ec41c9a9a48a828e68ae798835ec9b2",
-        "main.js": "a9dea204834e63c5880d0a4ceee5f8676657728e8afe221f769e4534bb6e83fd"
+        "manifest.json": "8648fa1158dba3a94977b363cda2ac3c169cb8c16faed8f56e6d00c46c65bd49",
+        "main.js": "ddcd0057e1becee6143bc942f21cd9e095b3e99277fe1ab176572fc87526bd6d"
       }
     },
     {
@@ -56,7 +56,7 @@
         "ru": "Заметка на каждый день: Ctrl+Alt+D, кнопка слева или стартовая страница. Создаётся по шаблону в своей папке, имя — дата в выбранном виде. Команды «Предыдущая» и «Следующая» листают дни.",
         "en": "A note for every day: Ctrl+Alt+D, the button on the left or the start page. Made from a template in a folder of its own, named by the date in the chosen form. Previous and Next go through the days."
       },
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Syntex",
       "minApi": 7,
       "path": "daily-notes",
@@ -65,8 +65,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "39baccf9e159777d63548e291d17e4c898606f8da752f53467b57c03e103b93f",
-        "main.js": "b26f9781821767b12ecdd70753376124fd1da6953d749e54b7648dbf02659510"
+        "manifest.json": "e6dc98171050adb5bbba413d2429a2611f6f43e659ba1fbb6b5fe11c101751bc",
+        "main.js": "d856a0f844f32a25b891dbc9769cf9d3594aa680147aa6e54df74e863bfa6aed"
       }
     },
     {
@@ -127,7 +127,7 @@
         "ru": "Вкладки собираются в цветные коллекции, как группы вкладок в браузере: название, цвет, свернуть, новая вкладка в коллекции, разгруппировать, закрыть все. Всё — в меню вкладки по правой кнопке.",
         "en": "Gather tabs into coloured collections, like tab groups in a browser: a name, a colour, fold, a new tab in the collection, ungroup, close them all. All in the right-click menu of a tab."
       },
-      "version": "1.5.2",
+      "version": "1.5.3",
       "author": "Syntex",
       "minApi": 6,
       "path": "tab-collections",
@@ -136,8 +136,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "6cb36a79a2a5f9d009f9457addf708440a40d171cc9d930a14ef228204346a49",
-        "main.js": "81bd419c2abbbf40d960c42cfdb7f0e47a6f49a707dcacfc7d2438c6ffa86afc"
+        "manifest.json": "9a6355ad1b7633ba32044a81fa03f0ca42d0e5c5115fc17e8cc1a82adcf6d2f9",
+        "main.js": "ec8ee5441e204cc90ac77d895efd833d01e30dbef45c033fe8c30456c1b6fed5"
       }
     },
     {
@@ -173,7 +173,7 @@
         "ru": "Заметки папки «Шаблоны» — шаблоны: «Вставить шаблон» (Ctrl+Alt+T, меню «Вставка») кладёт шаблон на место курсора, «Новая заметка из шаблона» создаёт заметку. {{название}}, {{дата}}, {{время}}, {{день недели}} заполняются сами.",
         "en": "The notes of the Templates folder are templates: Insert a template (Ctrl+Alt+T, the Insert menu) puts one at the caret, New note from a template makes a note of it. {{title}}, {{date}}, {{time}}, {{weekday}} are filled in."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 7,
       "path": "templates",
@@ -182,8 +182,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "bde698efb336569ac39fbb0a20558cea080391084d33d1ffb4150d90270290bc",
-        "main.js": "641c2fff89b9b38e4d866eff4594f1343c4994fa15e9a05a5109d13c69261cc1"
+        "manifest.json": "aa68a2fd03e33cc372a2d45469b5b7cf41d19e12cbc0d15204697e6366653a1a",
+        "main.js": "0190a7b29ca20ab1c601c0b59faebf58f731a66ffdb9edefa08bef4a3093df1d"
       }
     },
     {

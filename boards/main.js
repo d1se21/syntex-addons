@@ -1928,7 +1928,10 @@ export default {
               )
             }
             input.oninput = render
-            input.onkeydown = (e) => e.key === 'Enter' && list.firstChild?.click?.()
+            input.onkeydown = (e) => {
+              // (a handler that returns false stops the key: only Enter does something here, every other key types)
+              if (e.key === 'Enter') list.firstChild?.click?.()
+            }
             box.append(input, list)
             render()
             requestAnimationFrame(() => input.focus())
