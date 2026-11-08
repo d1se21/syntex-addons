@@ -133,8 +133,8 @@ export default {
     api.rail.add({ id: 'open', title: { ru: 'Теги', en: 'Tags' }, icon: ICON, command: 'open', run: () => show(null) })
 
     api.ui.addStyle(`
-      .tg-tag { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 4px; padding: 0 2px; cursor: pointer; }
-      .tg-tag:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+      /* (Syntex itself draws a #tag as a pill: the add-on only makes it a link to the Tags tab, without a second background) */
+      .tg-tag { cursor: pointer; }
       .tg-root { display: flex; height: 100%; min-height: 0; background: var(--bg-app); }
       .tg-side { width: 240px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); padding: 10px; gap: 8px; }
       .tg-find { height: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--outline); background: var(--bg-panel); color: var(--text); outline: none; }

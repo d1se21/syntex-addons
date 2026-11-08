@@ -150,7 +150,7 @@
         "ru": "#теги в тексте подсвечиваются и нажимаются: клик открывает вкладку «Теги» — все теги хранилища и заметки с выбранным, со строкой, где он стоит. Ctrl+клик ставит курсор в тег.",
         "en": "#tags in the text are coloured and can be clicked: a click opens the Tags tab, with every tag of the vault and the notes of the chosen one, at the line it stands on. Ctrl+click puts the caret in the tag."
       },
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Syntex",
       "minApi": 8,
       "path": "tags",
@@ -159,8 +159,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "6da6d184e95daead1c9c3d55e4f44ac1e783f71f4f4f6a46bfbc2f1ae315b29c",
-        "main.js": "8733f4483c81ce27f2349da094eadbfb9ea88731c1e114d14b3eeb22885b6a3d"
+        "manifest.json": "a177816534c99297f9761bc3dd2d82b704d04f21b9801d987463300f4f140247",
+        "main.js": "52dfa9f7b6d305822fa1e871cec06736ac30fb2bbec669f73f06f462e6f83ab7"
       }
     },
     {
