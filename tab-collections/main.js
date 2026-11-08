@@ -2,9 +2,9 @@
 // name: its chip stands before its first tab (a click folds it, a right click opens its editor; it is closed from
 // it), and a line of its colour runs under its tabs; the right-click menu of a tab of it folds or closes it too.
 // The chip drags the whole collection (let go on another collection, it goes before or after it, never inside).
-// A tab dragged and let go on a tab of a collection joins it, let go outside of every collection it leaves its own
-// (with Syntex before API 9: a tab held for a moment over another tab joins that one's collection, or makes a new
-// one with it). A tab dragged out of the run leaves it, a tab dropped inside the run joins it. In the book style of
+// A tab dragged and let go on a tab of a collection joins it, let go outside of every collection it leaves its own;
+// held for a moment over a tab of none and let go there, it makes a new collection with it (with Syntex before
+// API 9: a tab held for a moment over another tab joins that one's collection, or makes a new one with it). A tab dragged out of the run leaves it, a tab dropped inside the run joins it. In the book style of
 // tabs it is the same with the spines. The collections are kept with the add-on's data, by tab id.
 
 const COLORS = [
@@ -492,11 +492,31 @@ export default {
     })
     // Syntex with API 9 tells where a dragged tab was let go (in the strip, or on a spine or a page of the book): the
     // tab is part of the collection it was let go on, at once, and of none when let go outside of every collection.
-    // Holding a tab over another one then changes nothing: a tab let go next to a collection never makes a new one.
+    // A new collection is made only by holding the tab over a tab of none and letting it go on that same tab: a hold
+    // alone changes nothing, so a tab held on the way and let go elsewhere never makes a collection of its own.
     if (api.tabs.onDrop) {
+      let heldOver = null
+      api.tabs.onHold((dragged, target) => (heldOver = { dragged, target }))
+      // (the drop comes before the end of the drag; a drag let go nowhere, or called off, forgets the hold)
+      const forget = () => setTimeout(() => (heldOver = null), 0)
+      window.addEventListener('dragend', forget, true)
+      window.addEventListener('pointerup', forget, true)
+      api.onDispose(() => {
+        window.removeEventListener('dragend', forget, true)
+        window.removeEventListener('pointerup', forget, true)
+      })
       api.tabs.onDrop((dragged, target) => {
+        const hold = heldOver
+        heldOver = null
         const there = target ? collectionOf(target) : undefined
         const own = collectionOf(dragged)
+        if (target && !there && hold?.dragged === dragged && hold.target === target) {
+          takeOut(dragged)
+          state.collections.push({ id: `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: '', color: nextColor(), folded: false, tabs: [target, dragged] })
+          save()
+          draw()
+          return
+        }
         if (there === own) return
         takeOut(dragged)
         if (there) there.tabs.push(dragged)
