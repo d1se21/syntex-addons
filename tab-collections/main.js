@@ -288,10 +288,18 @@ export default {
       join(c, tabId)
       save()
       update()
-      requestAnimationFrame(() => {
-        const r = api.tabs.rectOf(tabId)
-        if (r) editor(c, r.left, r.bottom + 4)
-      })
+      requestAnimationFrame(() => editorAt(c, tabId))
+    }
+
+    /**
+     * The editor of a collection by one of its tabs: under its tab in the strip, beside its spine in the book; a tab
+     * that is not shown (the page in front of the book) has it at the top of the window.
+     */
+    const editorAt = (c, tabId) => {
+      const r = api.tabs.rectOf(tabId)
+      if (!r) editor(c, Math.max(8, window.innerWidth / 2 - 140), 60)
+      else if (r.height > 80) editor(c, r.right + 4, r.top + 10)
+      else editor(c, r.left, r.bottom + 4)
     }
 
     // A folded collection lists its tabs under the chip while the mouse is on it, as a browser does: the list stays
@@ -427,6 +435,32 @@ export default {
             name.focus()
             name.select()
           })
+          // For a moment after it opens, the focus is taken back when something else takes it without the mouse (the
+          // note in front of an older Syntex does so as the menu that opened the editor goes, or as its tab comes to
+          // the front): what is typed goes into the name. Selected again while nothing was typed yet.
+          let typed = false
+          let pressed = false
+          name.addEventListener('input', () => (typed = true))
+          const onPress = () => (pressed = true)
+          const onFocus = (e) => {
+            if (pressed || !box.isConnected || box.contains(e.target)) return
+            setTimeout(() => {
+              if (!box.isConnected || box.contains(document.activeElement)) return
+              name.focus()
+              if (!typed) name.select()
+            }, 0)
+          }
+          window.addEventListener('mousedown', onPress, true)
+          document.addEventListener('focusin', onFocus, true)
+          const stopWatch = () => {
+            window.removeEventListener('mousedown', onPress, true)
+            document.removeEventListener('focusin', onFocus, true)
+          }
+          const watchTimer = setTimeout(stopWatch, 600)
+          return () => {
+            clearTimeout(watchTimer)
+            stopWatch()
+          }
         }
       })
     }
@@ -451,7 +485,13 @@ export default {
         })
       }
       if (own) {
-        items.push({ label: own.folded ? t().unfold : t().fold, separatorBefore: true, action: () => (own.folded ? setFolded(own, false) : fold(own)) })
+        // the name and the colour, also from here: the chip of an unnamed collection is only a small dot
+        items.push({
+          label: t().edit,
+          separatorBefore: true,
+          action: () => editorAt(own, tab.id)
+        })
+        items.push({ label: own.folded ? t().unfold : t().fold, action: () => (own.folded ? setFolded(own, false) : fold(own)) })
         items.push({
           label: t().leave,
           action: () => {
