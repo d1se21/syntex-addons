@@ -2252,7 +2252,7 @@ export default {
         applyView()
         hint.hidden = board.cards.length > 0 && !broken
         hint.textContent = broken
-          ? tt('Данные доски повреждены, доска не изменяется: исправьте её заметку или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its note or make a new board.')
+          ? tt('Данные доски повреждены, доска не изменяется: исправьте её файл .board или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its .board file or make a new board.')
           : tt(
               'Двойной клик по пустому месту — новая карточка. Правая кнопка мыши — меню. Колесо — масштаб, пробел или средняя кнопка — двигать поле. Кружок у края карточки тянется к другой карточке — так появляется стрелка. Заметки и картинки можно перетащить сюда из дерева.',
               'Double click an empty place for a new card. Right click for the menu. The wheel zooms; Space or the middle button moves the field. Drag the dot at the edge of a card to another card to make an arrow. Notes and pictures can be dragged here from the tree.'
@@ -2273,7 +2273,10 @@ export default {
           linkLayer.replaceChildren()
           floatBar.hidden = true
           hint.hidden = false
-          hint.textContent = tt('Доска — это поле с карточками и стрелками. Создайте первую.', 'A board is a field with cards and arrows. Make the first one.')
+          // (the way to make one is right here, not only in the menu "…")
+          const make = el('button', { className: 'btn bd-first', textContent: tt('Создать доску', 'Make a board') })
+          make.onclick = () => void createBoard()
+          hint.replaceChildren(tt('Доска — это поле с карточками и стрелками. ', 'A board is a field with cards and arrows. '), make)
           syncToolbar()
           return
         }
@@ -2542,6 +2545,7 @@ export default {
       .bd-card.hit { box-shadow: 0 0 0 2px #fdd663; }
       .bd-band { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; z-index: 5; }
       .bd-hint { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); max-width: 420px; text-align: center; color: var(--text-3); font-size: 14px; line-height: 1.55; pointer-events: none; }
+      .bd-hint .bd-first { pointer-events: auto; display: block; margin: 14px auto 0; height: 34px; padding: 0 16px; }
       .bd-canvas.readonly .bd-card { opacity: .6; }
       .bd-float { position: absolute; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 10px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 20px rgb(0 0 0 / .35); }
       .bd-fbtn { min-width: 28px; height: 28px; border-radius: 6px; color: var(--text-2); font-size: 14px; }

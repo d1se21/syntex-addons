@@ -5,7 +5,7 @@
     "ru": "«/» в начале строки открывает список того, что можно вставить: заголовки, списки, задачу, цитату, таблицу, код, выноску, разделитель, ссылку, дату и время, а также шаблон, голосовую и ежедневную заметку, если эти аддоны включены. Набор фильтрует, ↑↓ и Enter выбирают.",
     "en": "\"/\" at the start of a line opens a list of what can be put there: headings, lists, a task, a quote, a table, code, a callout, a divider, a link, the date and time, and a template, a voice note or today's note when those add-ons are on. Typing filters, ↑↓ and Enter choose."
   },
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Syntex",
   "minApi": 8
 }

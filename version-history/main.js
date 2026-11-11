@@ -11,7 +11,22 @@ const pad = (n) => String(n).padStart(2, '0')
  * The name of the file of the versions of a note: its path with the characters a file name cannot hold written as
  * %XX (one note, one file: a/b.md and a__b.md never share one).
  */
-const nameOf = (path) => path.replace(/\\/g, '/').replace(/\.md$/i, '').replace(/[%/:*?"<>|]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')) + '.json'
+const longName = (path) => path.replace(/\\/g, '/').replace(/\.md$/i, '').replace(/[%/:*?"<>|]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))
+/** A short, steady fingerprint of a path (FNV-1a, 32 bits twice): for the names too long for the file system. */
+const hashOf = (text) => {
+  let a = 0x811c9dc5
+  let b = 0x01000193
+  for (let i = 0; i < text.length; i++) {
+    a = Math.imul(a ^ text.charCodeAt(i), 0x01000193) >>> 0
+    b = Math.imul(b ^ text.charCodeAt(text.length - 1 - i), 0x811c9dc5) >>> 0
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')
+}
+// (a deep note gives a name longer than a file may have, 255: then the end of it and a fingerprint of the whole path)
+const nameOf = (path) => {
+  const name = longName(path)
+  return (name.length <= 180 ? name : name.slice(-150) + '~' + hashOf(path)) + '.json'
+}
 const fileOf = (path) => DIR + '/' + nameOf(path)
 
 const el = (tag, props = {}, children = []) => {
@@ -78,7 +93,51 @@ export default {
         return []
       }
     }
-    const writeVersions = (path, versions) => api.vault.write(fileOf(path), JSON.stringify({ path, versions }, null, 1), true)
+    const writeVersions = async (path, versions) => {
+      await api.vault.write(fileOf(path), JSON.stringify({ path, versions }, null, 1), true)
+      remember(path)
+    }
+
+    // The notes that have a file of versions (the add-on cannot list its hidden folder): to take away, after a while,
+    // the versions of notes that are gone (deleted, renamed outside Syntex)
+    const GONE_DAYS = 30
+    const known = () => ({ ...(settings().files ?? {}) })
+    const remember = (path, gone = 0) => {
+      const files = known()
+      if (path in files && files[path] === gone) return
+      files[path] = gone
+      api.data.set({ ...settings(), files })
+    }
+    const forget = (path) => {
+      const files = known()
+      if (!(path in files)) return
+      delete files[path]
+      api.data.set({ ...settings(), files })
+    }
+    const tidy = async () => {
+      const files = known()
+      for (const [path, goneSince] of Object.entries(files)) {
+        let there = true
+        try {
+          there = await api.vault.exists(path)
+        } catch {
+          continue
+        }
+        if (there) {
+          if (goneSince) remember(path, 0)
+        } else if (!goneSince) remember(path, Date.now())
+        else if (Date.now() - goneSince > GONE_DAYS * 86_400_000) {
+          // (to the recycle bin: still there if it was wanted after all)
+          try {
+            if (await api.vault.exists(fileOf(path))) await api.vault.trash(fileOf(path))
+          } catch {
+            continue
+          }
+          forget(path)
+        }
+      }
+    }
+    setTimeout(() => void tidy(), 20_000)
 
     // (one note at a time: two saves close together must not both read the old list and lose a version)
     const queues = new Map()
@@ -105,10 +164,25 @@ export default {
         }
         if (text.length > MAX_NOTE) return
         const versions = await readVersions(path)
+        // the text the note had when it was opened, before this session's edits: the first version, now that it was edited
+        const base = opened.get(path)
+        opened.delete(path)
+        let added = false
+        if (base && base.text !== text && versions[versions.length - 1]?.text !== base.text) {
+          versions.push({ at: base.at, text: base.text })
+          added = true
+        }
         const last = versions[versions.length - 1]
         if (last) keptAt.set(path, last.at)
-        if (last && last.text === text) return
-        if (!force && last && Date.now() - last.at < settings().every * 60_000) return
+        // nothing new to keep now (the same text, or the last version is recent): only the text of the opening, if any
+        if ((last && last.text === text) || (!force && last && Date.now() - last.at < settings().every * 60_000)) {
+          if (added) {
+            while (versions.length > settings().keep) versions.shift()
+            await writeVersions(path, versions)
+            if (shownPath === path) void draw()
+          }
+          return
+        }
         versions.push({ at: Date.now(), text })
         keptAt.set(path, versions[versions.length - 1].at)
         while (versions.length > settings().keep) versions.shift()
@@ -116,8 +190,21 @@ export default {
         if (shownPath === path) void draw()
       }).catch(() => undefined)
 
-    // opened: its text as it was before this session's edits; saved: now and then while it is written
-    api.events.on('note-open', (path) => path && void keep(path, false))
+    // opened: its text is only held (a note just read gets no file of versions); saved, that is edited: the text of
+    // the opening becomes a version, and then a version now and then while it is written
+    const opened = new Map()
+    api.events.on('note-open', async (path) => {
+      if (!path || !/\.md$/i.test(path) || opened.has(path)) return
+      try {
+        const text = await api.vault.read(path)
+        if (text.length > MAX_NOTE) return
+        opened.set(path, { at: Date.now(), text })
+        // (a few dozen notes at most: the oldest one held is let go)
+        if (opened.size > 40) opened.delete(opened.keys().next().value)
+      } catch {
+        /* gone already */
+      }
+    })
     api.events.on('note-save', (path) => void keep(path, false))
 
     // a note renamed or moved in Syntex takes its versions along (API 8); one sent to the recycle bin keeps them,
@@ -126,6 +213,12 @@ export default {
       inQueue(from, async () => {
         keptAt.delete(from)
         keptAt.delete(to)
+        if (opened.has(from)) {
+          opened.set(to, opened.get(from))
+          opened.delete(from)
+        }
+        forget(from)
+        if (await api.vault.exists(fileOf(from))) remember(to)
         if (!(await api.vault.exists(fileOf(from)))) return
         const there = await readVersions(to)
         if (!there.length) {
@@ -208,9 +301,9 @@ export default {
               const same = v.text === now
               const row = el('button', { className: 'vh-row' + (i === chosen ? ' on' : '') }, [
                 el('span', { className: 'vh-when', textContent: when(v.at) }),
-                el('span', { className: 'vh-diff', textContent: same ? tt('как сейчас', 'as now') : `+${del} −${add}` })
+                el('span', { className: 'vh-diff', textContent: same ? tt('как сейчас', 'as now') : `+${add} −${del}` })
               ])
-              row.title = tt('Чем эта версия отличается от заметки сейчас: строк, которых теперь нет (+) и которые появились после (−)', 'How this version differs from the note now: lines gone since (+) and lines added since (−)')
+              row.title = tt('Что изменилось с этой версии до заметки сейчас: строк добавлено (+) и убрано (−)', 'What changed from this version to the note now: lines added (+) and removed (−)')
               row.onclick = () => {
                 chosen = i
                 void draw()
@@ -258,7 +351,8 @@ export default {
               ? el(
                   'div',
                   { className: 'vh-lines' },
-                  d.map((x) => el('div', { className: 'vh-line ' + x.kind, textContent: (x.kind === 'del' ? '+ ' : x.kind === 'add' ? '− ' : '  ') + (x.text || ' ') }))
+                  // (from the version to now: + added since, − removed since)
+                  d.map((x) => el('div', { className: 'vh-line ' + x.kind, textContent: (x.kind === 'add' ? '+ ' : x.kind === 'del' ? '− ' : '  ') + (x.text || ' ') }))
                 )
               : el('div', { className: 'vh-empty', textContent: tt('Эта версия совпадает с заметкой сейчас.', 'This version is the note as it is now.') })
           )
@@ -273,7 +367,7 @@ export default {
 
     const showFor = (path) => {
       shownPath = path
-      void keep(path, false).then(() => draw())
+      // (only shown: looking at the versions of a note makes none)
       api.views.open('main')
       void draw()
     }
@@ -331,8 +425,8 @@ export default {
       .vh-mode button.on { background: var(--bg-hover); color: var(--text); }
       .vh-preview { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; }
       .vh-text, .vh-lines { margin: 0; font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: var(--text-2); }
-      .vh-line.del { background: rgb(80 200 120 / 0.13); color: var(--text); }
-      .vh-line.add { background: rgb(240 90 90 / 0.13); color: var(--text-3); text-decoration: line-through; }
+      .vh-line.add { background: rgb(80 200 120 / 0.13); color: var(--text); }
+      .vh-line.del { background: rgb(240 90 90 / 0.13); color: var(--text-3); text-decoration: line-through; }
       .vh-empty { padding: 14px; color: var(--text-3); font-size: 13px; line-height: 1.5; }
     `)
   }

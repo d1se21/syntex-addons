@@ -2,8 +2,10 @@
 // Tags tab: every tag of the vault with the number of notes, and the notes of the chosen one with the line it stands
 // on; a click on a line opens the note there.
 
-// (the rule of Syntex itself, src/shared/links.ts: at least one character that is not a digit, so #123 is no tag)
-const TAG = /(^|[\s(])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu
+// (the rule of Syntex itself, src/shared/links.ts: at least one character that is not a digit, so #123 is no tag; not
+// the #part of a link, ](#section); and not a color, #ff0000)
+const TAG = /(^|\s|(?<!\])\()#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu
+const COLOR = /^(?=[0-9a-f]*\d)([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 const ICON = 'M9 4L7 20M17 4l-2 16M4 9h16M3 15h16'
 const el = (tag, props = {}, children = []) => {
   const node = Object.assign(document.createElement(tag), props)
@@ -21,6 +23,7 @@ export default {
     const marks = new MatchDecorator({
       regexp: TAG,
       decorate: (add, from, to, m, view) => {
+        if (COLOR.test(m[2])) return
         const start = from + m[1].length
         // not in code, a link or a heading's # (a heading has a space after its #)
         const node = syntaxTree(view.state).resolveInner(start, 1)

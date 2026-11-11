@@ -137,7 +137,8 @@ export default {
             const q = head > open.from ? u.state.sliceDoc(open.from, head) : ''
             // (a space may be part of the query, «/сегодняшняя заметка»; "/ ", two spaces or a new line end it;
             // what fits nothing closes it when drawn)
-            if (head <= open.from || !q.startsWith('/') || /^\/\s|\s\s|\n/.test(q) || q.length > 30) close()
+            // (a space or a digit right after the "/" is text: "/ 2", "/2")
+            if (head <= open.from || !q.startsWith('/') || /^\/[\s\d]|\s\s|\n/.test(q) || q.length > 30) close()
             // (drawn after the update: the editor may not be measured while it updates)
             else requestAnimationFrame(draw)
             return
@@ -147,6 +148,8 @@ export default {
           if (head < 1 || u.state.sliceDoc(head - 1, head) !== '/') return
           const before = head >= 2 ? u.state.sliceDoc(head - 2, head - 1) : ''
           if (before && !/\s/.test(before)) return
+          // "1 /2", "12 / 5": a fraction or a date typed with spaces, not a command
+          if (head >= 3 && /\d/.test(u.state.sliceDoc(head - 3, head - 2))) return
           // (not inside code: there "/" is just a character - in a fenced or indented block, or `inline code`)
           const line = u.state.doc.lineAt(head)
           if (/^\s*(```|~~~)/.test(line.text)) return

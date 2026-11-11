@@ -91,7 +91,13 @@ export default {
 
     /** Open the daily note of a day, making it (and its folder) when it is not there. */
     const openDay = async (d) => {
-      const path = pathFor(d)
+      let path = pathFor(d)
+      // the note of that day may have a name of the other language ("6 ноября 2026" / "November 6, 2026"): the
+      // language of the window changed since it was made. It is that note, not a second one.
+      // (only the same form in the other language: a form chosen anew in the settings makes the note of that form)
+      const other = nameFor(d, settings().format, api.language() === 'ru' ? 'en' : 'ru')
+      const same = dailyNotes().find((x) => dayKey(new Date(x.date)) === dayKey(d) && x.path.split('/').pop() === other + '.md')
+      if (same) path = same.path
       try {
         if (!(await api.vault.exists(path))) {
           if (folderOf() && api.vault.createFolder) await api.vault.createFolder(folderOf())

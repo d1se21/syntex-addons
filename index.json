@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Каждая доска — отдельный файл .board (по умолчанию в папке «Boards»), открывается кликом в дереве. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Each board is a .board file of its own (in the \"Boards\" folder by default), opened by a click in the tree. Ctrl+Alt+B opens it."
       },
-      "version": "1.3.3",
+      "version": "1.3.4",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "8648fa1158dba3a94977b363cda2ac3c169cb8c16faed8f56e6d00c46c65bd49",
-        "main.js": "ddcd0057e1becee6143bc942f21cd9e095b3e99277fe1ab176572fc87526bd6d"
+        "manifest.json": "b3171222bf99ba53d568c94529c1234b416680c645158604886d1e6f6f9249bd",
+        "main.js": "a5caa32da457286eb789ed4e6b05bd1413e58fb3a118ec0973e0578e966573c6"
       }
     },
     {
@@ -33,7 +33,7 @@
         "ru": "Открывает доски JSON Canvas (.canvas, как в Obsidian) в «Интерактивной доске»: клик по .canvas в дереве делает рядом доску .board и открывает её, сам .canvas не меняется. Текст, заметки, картинки, ссылки, группы (рамки) и стрелки с подписями и цветами переносятся. Меню файла: «Конвертировать в доску», для папки — все .canvas в ней, для доски — «Сохранить как .canvas». Нужен аддон «Интерактивная доска».",
         "en": "Opens JSON Canvas boards (.canvas, as in Obsidian) in the Interactive board: a click on a .canvas in the tree makes a .board next to it and opens it; the .canvas itself is left as it is. Text, notes, pictures, links, groups (frames) and arrows with their labels and colours come over. File menu: \"Convert to a board\", for a folder every .canvas in it, for a board \"Save as .canvas\". Needs the Interactive board add-on."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 8,
       "path": "canvas-import",
@@ -42,8 +42,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "d6bc12efbb0a348fb83f6ee6b4f9f4c498ae894ecc471b1bf6ea4e99292c4aa4",
-        "main.js": "7ac99cfb74194688e31f95e5b07d85e8f121ff3cf4b599d9946b5372225e0652"
+        "manifest.json": "2d160d8d23b5b8ed380f1efb976c02691f576c57d36cce189f71b1228e0385c0",
+        "main.js": "aec66c33023a015ed6ae43a79e9ed0ffb187bca28a5ec9cf3a9daa598b28ad0d"
       }
     },
     {
@@ -56,7 +56,7 @@
         "ru": "Заметка на каждый день: Ctrl+Alt+D, кнопка слева или стартовая страница. Создаётся по шаблону в своей папке, имя — дата в выбранном виде. Команды «Предыдущая» и «Следующая» листают дни.",
         "en": "A note for every day: Ctrl+Alt+D, the button on the left or the start page. Made from a template in a folder of its own, named by the date in the chosen form. Previous and Next go through the days."
       },
-      "version": "1.0.3",
+      "version": "1.0.4",
       "author": "Syntex",
       "minApi": 7,
       "path": "daily-notes",
@@ -65,8 +65,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "e6dc98171050adb5bbba413d2429a2611f6f43e659ba1fbb6b5fe11c101751bc",
-        "main.js": "d856a0f844f32a25b891dbc9769cf9d3594aa680147aa6e54df74e863bfa6aed"
+        "manifest.json": "a39a7f03604eba67ce4e69fc18fd0789befc30458bb6f36a644a20602cf4e590",
+        "main.js": "e25f362fb7635abe2bd27d2016f7e0415c6655089ff3bb7b5872559c31f0d5e7"
       }
     },
     {
@@ -104,7 +104,7 @@
         "ru": "«/» в начале строки открывает список того, что можно вставить: заголовки, списки, задачу, цитату, таблицу, код, выноску, разделитель, ссылку, дату и время, а также шаблон, голосовую и ежедневную заметку, если эти аддоны включены. Набор фильтрует, ↑↓ и Enter выбирают.",
         "en": "\"/\" at the start of a line opens a list of what can be put there: headings, lists, a task, a quote, a table, code, a callout, a divider, a link, the date and time, and a template, a voice note or today's note when those add-ons are on. Typing filters, ↑↓ and Enter choose."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 8,
       "path": "slash-commands",
@@ -113,8 +113,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "90f4855556d6bd13065e40513b8327636cb47defd57bfe92ee44528a65c44f91",
-        "main.js": "4fa48fbf43a213392b6f9530dba6e2c09bd4756748681017c5a07f621d20f543"
+        "manifest.json": "6e47646b7fe4f7e62ab77af0447203781aa524d26977cca7c47de692dc74ecdc",
+        "main.js": "5939fa8dec1af2dfb1d35e969eb75b0a6da3fbf7603b91dc1d8055fa9cd8d2d4"
       }
     },
     {
@@ -150,7 +150,7 @@
         "ru": "#теги в тексте подсвечиваются и нажимаются: клик открывает вкладку «Теги» — все теги хранилища и заметки с выбранным, со строкой, где он стоит. Ctrl+клик ставит курсор в тег.",
         "en": "#tags in the text are coloured and can be clicked: a click opens the Tags tab, with every tag of the vault and the notes of the chosen one, at the line it stands on. Ctrl+click puts the caret in the tag."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 8,
       "path": "tags",
@@ -159,8 +159,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "a177816534c99297f9761bc3dd2d82b704d04f21b9801d987463300f4f140247",
-        "main.js": "52dfa9f7b6d305822fa1e871cec06736ac30fb2bbec669f73f06f462e6f83ab7"
+        "manifest.json": "a70211cc5444eb4733dd2d408890b18c7ccd33982234ed2971c22a7dcd8412bf",
+        "main.js": "f9461b1a621e9db7c7858a209d50f8c950a9d6e7cace7de282af6d4cd9aab015"
       }
     },
     {
@@ -196,7 +196,7 @@
         "ru": "Пока вы пишете, Syntex тихо сохраняет версии заметки (раз в 10 минут правки и при открытии). «Версии заметки» (Ctrl+Alt+H, меню текста или дерева) показывает их по времени, что изменилось, и возвращает нужную. Версии лежат в папке заметок (.syntex/history).",
         "en": "While you write, versions of the note are kept quietly (every 10 minutes of editing, and when it is opened). Versions of the note (Ctrl+Alt+H, the menu of the text or of the tree) lists them by time, shows what changed and puts one back. They live in the notes folder (.syntex/history)."
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Syntex",
       "minApi": 7,
       "path": "version-history",
@@ -205,8 +205,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "6ebe75117fa75809fd657a2067775e2f3830edae90b0c46cb0dddfcf5aaf6b87",
-        "main.js": "d5c4a46ff4f959a4175e62a4c564296bf34085d4a66a6e48e7402472d1d6a201"
+        "manifest.json": "e0f4ffa50efec94c7eca2880d9fb30184a9cff68648f9133ad3ad841130590de",
+        "main.js": "4d70e12cc3369f0593496ed4994db40a721a88ad383a3d5f2841851bb924575f"
       }
     },
     {

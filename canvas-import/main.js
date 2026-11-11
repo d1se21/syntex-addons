@@ -305,6 +305,20 @@ export default {
         if (!quiet) api.ui.notice(tt('Не удалось прочитать ', 'Could not read ') + baseName(canvas))
         return null
       }
+      // an empty file (or a canvas with nothing on it) is said so: no empty board is made of it
+      let empty = !text.replace(/^﻿/, '').trim()
+      if (!empty) {
+        try {
+          const src = JSON.parse(text.replace(/^﻿/, ''))
+          empty = !!src && typeof src === 'object' && !Array.isArray(src) && !(Array.isArray(src.nodes) && src.nodes.length)
+        } catch {
+          /* not JSON: said below */
+        }
+      }
+      if (empty) {
+        if (!quiet) api.ui.notice(tt(`«${baseName(canvas)}» пуст: доска из него не сделана`, `"${baseName(canvas)}" is empty: no board was made of it`), 5000)
+        return null
+      }
       const sig = signature(text)
       const before = data().made[canvas]
       const files = known()
