@@ -187,6 +187,34 @@
       }
     },
     {
+      "id": "translate",
+      "name": {
+        "ru": "Переводчик",
+        "en": "Translator"
+      },
+      "description": {
+        "ru": "Перевод выделенного текста: «Перевести» в меню правой кнопки (или Ctrl+Shift+Y) открывает окно с исходным текстом и переводом на выбранный язык. Язык текста определяется сам; перевод можно скопировать или поставить на место выделенного. Текст отправляется в Google Переводчик, нужен интернет.",
+        "en": "Translation of the selected text: \"Translate\" in the right-click menu (or Ctrl+Shift+Y) opens a window with the text and its translation into the language you choose. The language of the text is found by itself; the translation can be copied or put in place of the selection. The text is sent to Google Translate, the internet is needed."
+      },
+      "version": "1.0.0",
+      "author": "Syntex",
+      "minApi": 10,
+      "permissions": [
+        "internet"
+      ],
+      "path": "translate",
+      "files": [
+        "manifest.json",
+        "main.js",
+        "styles.css"
+      ],
+      "hashes": {
+        "manifest.json": "f95908f3f8e2bfa3dd9610c24f7847326aca0b162e816636461061e9567e73d5",
+        "main.js": "9e124afd9112a5b4364f7172bcded371d7969ac2d52473e7540d304bc56951ac",
+        "styles.css": "380f5195ee9bd733d408e9237e460ba77327e094408a6135b6d2a4d8ff873b92"
+      }
+    },
+    {
       "id": "version-history",
       "name": {
         "ru": "История версий",
@@ -216,10 +244,10 @@
         "en": "Voice notes"
       },
       "description": {
-        "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Микрофон выбирается в настройках аддона.",
-        "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The microphone is chosen in the add-on's settings."
+        "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Кнопка «текст» на записи показывает, что в ней сказано, и прячет текст обратно; распознаёт Whisper на этом компьютере. Микрофон, модель и язык речи выбираются в настройках аддона.",
+        "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The text button on a recording shows what is said in it and hides it again; Whisper recognises it on this computer. The microphone, the model and the language are chosen in the add-on's settings."
       },
-      "version": "1.3.1",
+      "version": "1.4.0",
       "author": "Syntex",
       "minApi": 6,
       "permissions": [
@@ -232,9 +260,9 @@
         "styles.css"
       ],
       "hashes": {
-        "manifest.json": "843467bbce6ea993c2518c74aa41761f66bbe0d41e68ca65d531e1060aa18e6d",
-        "main.js": "464db1fcc96e77292bead31d8454ac559bc9b22a1b796a44be1ebce015318b65",
-        "styles.css": "62c09f0b9ad3d170b047c1d4321efa2933ad498552b6788d9bc91d0587329fea"
+        "manifest.json": "e0b25eff2d2e52cd64ef2cf588febcb532fbe9cac1debb68fe58c652c7486819",
+        "main.js": "0fe8c6baeba444593e8c5c1d5a640e9fcb50f7f5f6ad11e216475872fed5b378",
+        "styles.css": "9f74c76459845b314167978a6bfe21f5513755d15a45afb28d767091c4a75bba"
       }
     }
   ]
