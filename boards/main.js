@@ -46,10 +46,35 @@ const ICONS = {
   fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'
 }
+/**
+ * The box of an icon, moved onto its drawing so that the icon is in the middle of its button (the hand and the
+ * magnifier are drawn off the middle of their grid). Measured once per icon in a hidden svg.
+ */
+const boxes = new Map()
+const boxOf = (name) => {
+  if (boxes.has(name)) return boxes.get(name)
+  let vb = '0 0 24 24'
+  try {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('style', 'position:fixed;left:-99px;top:0;width:24px;height:24px;visibility:hidden')
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    p.setAttribute('d', ICONS[name])
+    svg.append(p)
+    document.body.append(svg)
+    const b = p.getBBox()
+    svg.remove()
+    const r = (v) => Math.round(v * 8) / 8
+    if (b.width || b.height) vb = `${r(b.x + b.width / 2 - 12)} ${r(b.y + b.height / 2 - 12)} 24 24`
+  } catch {
+    /* the plain box */
+  }
+  boxes.set(name, vb)
+  return vb
+}
 /** An icon drawn like the icons of Syntex (lines of the same width, in the colour of the text). */
 const icon = (name) => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('viewBox', boxOf(name))
   svg.setAttribute('class', 'bd-ico' + (name === 'more' ? ' bd-ico-dots' : ''))
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   p.setAttribute('d', ICONS[name])

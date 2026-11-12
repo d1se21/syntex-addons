@@ -169,3 +169,16 @@
   --selection: rgba(0, 64, 192, 0.25); --selection-blur: rgba(0, 64, 192, 0.12);
   --backdrop: rgba(0, 0, 0, 0.45);
 }
+
+/* ---------- your colours: the wells in the settings ---------- */
+
+.mt-wells { display: flex; align-items: flex-end; gap: 10px; }
+.mt-well { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer; }
+.mt-well input[type='color'] {
+  width: 28px; height: 28px; padding: 0; border: 1px solid var(--border-2); border-radius: 50%;
+  background: none; cursor: pointer; overflow: hidden;
+}
+.mt-well input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+.mt-well input[type='color']::-webkit-color-swatch { border: none; border-radius: 50%; }
+.mt-well input[type='color']:hover { border-color: var(--outline); }
+.mt-reset { margin-left: 4px; align-self: center; }
