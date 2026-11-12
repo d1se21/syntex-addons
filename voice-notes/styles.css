@@ -18,3 +18,22 @@
 .mic-picker .btn { height: 34px; }
 .mic-meter { width: 70px; height: 6px; border-radius: 3px; background: var(--bg-hover); overflow: hidden; }
 .mic-meter i { display: block; height: 100%; background: var(--accent); transition: width 0.06s linear; }
+
+/* the text of a recording (the button on the card of the sound, the text under it) */
+.vn-text-btn { flex: none; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--text-3); transition: background-color 0.12s, color 0.12s; }
+.vn-text-btn:hover { background: var(--bg-hover); color: var(--text); }
+.vn-text-btn.on { background: var(--bg-hover); color: var(--text); }
+.vn-text-btn.busy { animation: vn-busy 1s ease-in-out infinite; }
+@keyframes vn-busy { 50% { opacity: 0.4; } }
+/* the text is in the card itself, on a second row under the buttons, a line between them */
+.audio-card:has(> .vn-transcript:not([hidden])) { flex-wrap: wrap; row-gap: 0; }
+.vn-transcript {
+  display: block; flex: 0 0 100%; box-sizing: border-box; margin: 8px 0 0; padding: 9px 6px 3px;
+  border-top: 1px solid var(--border);
+  font-size: 14px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; user-select: text; cursor: text;
+  animation: vn-open 0.16s ease-out;
+}
+.vn-transcript[hidden] { display: none; }
+.vn-transcript.vn-working { color: var(--text-muted); font-style: italic; }
+.vn-transcript.vn-error { color: var(--danger-text); }
+@keyframes vn-open { from { opacity: 0; transform: translateY(-3px); } }
