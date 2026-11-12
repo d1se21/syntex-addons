@@ -187,6 +187,34 @@
       }
     },
     {
+      "id": "translate",
+      "name": {
+        "ru": "Переводчик",
+        "en": "Translator"
+      },
+      "description": {
+        "ru": "Перевод выделенного текста: «Перевести» в меню правой кнопки (или Ctrl+Shift+Y) открывает окно с исходным текстом и переводом на выбранный язык. Язык текста определяется сам; перевод можно скопировать или поставить на место выделенного. Текст отправляется в Google Переводчик, нужен интернет.",
+        "en": "Translation of the selected text: \"Translate\" in the right-click menu (or Ctrl+Shift+Y) opens a window with the text and its translation into the language you choose. The language of the text is found by itself; the translation can be copied or put in place of the selection. The text is sent to Google Translate, the internet is needed."
+      },
+      "version": "1.0.0",
+      "author": "Syntex",
+      "minApi": 10,
+      "permissions": [
+        "internet"
+      ],
+      "path": "translate",
+      "files": [
+        "manifest.json",
+        "main.js",
+        "styles.css"
+      ],
+      "hashes": {
+        "manifest.json": "f95908f3f8e2bfa3dd9610c24f7847326aca0b162e816636461061e9567e73d5",
+        "main.js": "9e124afd9112a5b4364f7172bcded371d7969ac2d52473e7540d304bc56951ac",
+        "styles.css": "380f5195ee9bd733d408e9237e460ba77327e094408a6135b6d2a4d8ff873b92"
+      }
+    },
+    {
       "id": "version-history",
       "name": {
         "ru": "История версий",

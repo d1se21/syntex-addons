@@ -1,0 +1,20 @@
+{
+  "id": "translate",
+  "name": {
+    "ru": "Переводчик",
+    "en": "Translator"
+  },
+  "description": {
+    "ru": "Перевод выделенного текста: «Перевести» в меню правой кнопки (или Ctrl+Shift+Y) открывает окно с исходным текстом и переводом на выбранный язык. Язык текста определяется сам; перевод можно скопировать или поставить на место выделенного. Текст отправляется в Google Переводчик, нужен интернет.",
+    "en": "Translation of the selected text: \"Translate\" in the right-click menu (or Ctrl+Shift+Y) opens a window with the text and its translation into the language you choose. The language of the text is found by itself; the translation can be copied or put in place of the selection. The text is sent to Google Translate, the internet is needed."
+  },
+  "version": "1.0.0",
+  "author": "Syntex",
+  "minApi": 10,
+  "permissions": [
+    "internet"
+  ],
+  "hosts": [
+    "translate.googleapis.com"
+  ]
+}
