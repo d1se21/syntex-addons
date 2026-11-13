@@ -104,7 +104,7 @@
         "ru": "«/» в начале строки открывает список того, что можно вставить: заголовки, списки, задачу, цитату, таблицу, код, выноску, разделитель, ссылку, дату и время, а также шаблон, голосовую и ежедневную заметку, если эти аддоны включены. Набор фильтрует, ↑↓ и Enter выбирают.",
         "en": "\"/\" at the start of a line opens a list of what can be put there: headings, lists, a task, a quote, a table, code, a callout, a divider, a link, the date and time, and a template, a voice note or today's note when those add-ons are on. Typing filters, ↑↓ and Enter choose."
       },
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Syntex",
       "minApi": 8,
       "path": "slash-commands",
@@ -113,8 +113,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "6e47646b7fe4f7e62ab77af0447203781aa524d26977cca7c47de692dc74ecdc",
-        "main.js": "5939fa8dec1af2dfb1d35e969eb75b0a6da3fbf7603b91dc1d8055fa9cd8d2d4"
+        "manifest.json": "b7e1151e1708ea4e940df1e472232715b58f8909905ce9f9810845a87790ddc0",
+        "main.js": "ba523e6080c169693aafbd6c38cfa1a78c947c60eaa9ebe6b088f629e1e6b3dd"
       }
     },
     {
