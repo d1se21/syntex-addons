@@ -5,10 +5,10 @@
     "en": "More Themes"
   },
   "description": {
-    "ru": "Новые цвета для Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Сепия, высокий контраст и свои цвета (фон, панели, текст, акцент). Тёмная и светлая тема выбираются отдельно в настройках аддона; какая работает сейчас, решает тема Syntex (тёмная, светлая или как в системе).",
-    "en": "New colours for Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Sepia, high contrast and your own colours (background, panels, text, accent). The dark and the light theme are chosen apart in the add-on's settings; which one is on is decided by the theme of Syntex (dark, light or as the system)."
+    "ru": "Новые цвета для Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Сепия, высокий контраст и свои цвета (фон, панели, текст, акцент), которые можно сохранить как тему со своим названием. Тёмная и светлая тема выбираются отдельно в настройках аддона; какая работает сейчас, решает тема Syntex (тёмная, светлая или как в системе).",
+    "en": "New colours for Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Sepia, high contrast and your own colours (background, panels, text, accent), which can be saved as a theme with a name. The dark and the light theme are chosen apart in the add-on's settings; which one is on is decided by the theme of Syntex (dark, light or as the system)."
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Syntex",
   "minApi": 8
 }

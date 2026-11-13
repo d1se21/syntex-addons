@@ -182,3 +182,20 @@
 .mt-well input[type='color']::-webkit-color-swatch { border: none; border-radius: 50%; }
 .mt-well input[type='color']:hover { border-color: var(--outline); }
 .mt-reset { margin-left: 4px; align-self: center; }
+
+/* ---------- saved themes: the list in the settings ---------- */
+
+.mt-save { align-self: center; }
+.mt-saved { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.mt-saved-none { font-size: 12px; color: var(--text-muted); }
+.mt-saved-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-app); }
+.mt-saved-item.on { border-color: var(--outline); }
+.mt-saved-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 5px 8px; text-align: left; border-radius: 8px; }
+.mt-saved-pick:hover { background: var(--bg-hover); }
+.mt-saved-dots { flex: none; display: flex; }
+.mt-saved-dots { gap: 2px; }
+.mt-saved-dots i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-2); }
+.mt-saved-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text); padding-left: 3px; }
+.mt-saved-kind { flex: none; font-size: 11px; color: var(--text-muted); }
+.mt-saved-del { flex: none; width: 25px; height: 25px; margin-right: 3px; border-radius: 6px; font-size: 16px; line-height: 1; color: var(--text-3); }
+.mt-saved-del:hover { background: var(--bg-hover); color: var(--danger-text); }
