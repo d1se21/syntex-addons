@@ -29,6 +29,46 @@ export default {
       const before = view.state.sliceDoc(line.from, from).trim() ? '\n' : ''
       put(view, from, to, before + text, before.length + (caret ?? text.length))
     }
+    /**
+     * A table, drawn at once: an empty line before it (a table right under a line of text is no table for Obsidian,
+     * and Syntex shows it as its Markdown then) and after it when text follows; the cursor then goes into its first
+     * header cell with the name selected, as with "Table" in the menu of the editor.
+     */
+    const table = (view, from, to) => {
+      const { doc } = view.state
+      const line = doc.lineAt(from)
+      const textBefore = view.state.sliceDoc(line.from, from).trim() !== ''
+      const textAfter = view.state.sliceDoc(to, line.to).trim() !== ''
+      const prevBlank = line.number === 1 || doc.line(line.number - 1).text.trim() === ''
+      const nextText = !textAfter && line.number < doc.lines && doc.line(line.number + 1).text.trim() !== ''
+      const lead = textBefore ? '\n\n' : prevBlank ? '' : '\n'
+      // (the spaces typed before the "/" do not stay at the end of the line of text)
+      if (textBefore) while (from > line.from && /[ \t]/.test(view.state.sliceDoc(from - 1, from))) from--
+      const body = tt('| Столбец 1 | Столбец 2 |\n| --- | --- |\n|  |  |', '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |')
+      const tail = textAfter ? '\n\n' : nextText || line.number === doc.lines ? '\n' : ''
+      const start = from + lead.length
+      put(view, from, to, lead + body + tail)
+      // the table is drawn on the next frame: its first cell takes the cursor, its text selected
+      let tries = 0
+      const focusFirst = () => {
+        const wrap = [...view.dom.querySelectorAll('.cm-table-wrap')].find((w) => {
+          try {
+            return view.posAtDOM(w) === start
+          } catch {
+            return false
+          }
+        })
+        const cell = wrap?.querySelector('[data-r="0"][data-c="0"]')
+        if (!cell) return void (++tries < 10 && requestAnimationFrame(focusFirst))
+        cell.focus()
+        const range = document.createRange()
+        range.selectNodeContents(cell)
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      }
+      requestAnimationFrame(focusFirst)
+    }
     /** A prefix of the line (heading, list...): the line starts with it. */
     const prefix = (mark) => (view, from, to) => {
       const line = view.state.doc.lineAt(from)
@@ -52,7 +92,7 @@ export default {
         { ru: 'Задача', en: 'Task', keys: 'todo task check задача чек', hint: '[ ]', run: prefix('- [ ] ') },
         { ru: 'Цитата', en: 'Quote', keys: 'quote цитата', hint: '>', run: prefix('> ') },
         { ru: 'Выноска', en: 'Callout', keys: 'callout note выноска', hint: '[!note]', run: (v, f, t) => block(v, f, t, '> [!note] ') },
-        { ru: 'Таблица', en: 'Table', keys: 'table таблица', hint: '|', run: (v, f, t) => block(v, f, t, tt('| Столбец 1 | Столбец 2 |\n| --- | --- |\n|  |  |\n', '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n'), tt('| Столбец 1 | Столбец 2 |\n| --- | --- |\n| ', '| Column 1 | Column 2 |\n| --- | --- |\n| ').length) },
+        { ru: 'Таблица', en: 'Table', keys: 'table таблица', hint: '|', run: table },
         { ru: 'Блок кода', en: 'Code block', keys: 'code код', hint: '```', run: (v, f, t) => block(v, f, t, '```\n\n```\n', 4) },
         { ru: 'Разделитель', en: 'Divider', keys: 'rule divider hr линия разделитель', hint: '---', run: (v, f, t) => block(v, f, t, '---\n') },
         { ru: 'Ссылка на заметку', en: 'Link to a note', keys: 'link ссылка wiki', hint: '[[ ]]', run: (v, f, t) => put(v, f, t, '[[]]', 2) },
