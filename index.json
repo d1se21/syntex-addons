@@ -76,10 +76,10 @@
         "en": "More Themes"
       },
       "description": {
-        "ru": "Новые цвета для Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Сепия, высокий контраст и свои цвета (фон, панели, текст, акцент). Тёмная и светлая тема выбираются отдельно в настройках аддона; какая работает сейчас, решает тема Syntex (тёмная, светлая или как в системе).",
-        "en": "New colours for Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Sepia, high contrast and your own colours (background, panels, text, accent). The dark and the light theme are chosen apart in the add-on's settings; which one is on is decided by the theme of Syntex (dark, light or as the system)."
+        "ru": "Новые цвета для Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Сепия, высокий контраст и свои цвета (фон, панели, текст, акцент), которые можно сохранить как тему со своим названием. Тёмная и светлая тема выбираются отдельно в настройках аддона; какая работает сейчас, решает тема Syntex (тёмная, светлая или как в системе).",
+        "en": "New colours for Syntex: Nord, Dracula, Gruvbox, Solarized, Catppuccin, Sepia, high contrast and your own colours (background, panels, text, accent), which can be saved as a theme with a name. The dark and the light theme are chosen apart in the add-on's settings; which one is on is decided by the theme of Syntex (dark, light or as the system)."
       },
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "Syntex",
       "minApi": 8,
       "path": "more-themes",
@@ -89,9 +89,9 @@
         "styles.css"
       ],
       "hashes": {
-        "manifest.json": "b497894785a020da38881182c932c043bd32d73fe0c4abfe445bb581ceeb840a",
-        "main.js": "c67c18fdcad62af61da90e5d3c339c8b45e1e69a379679cce59d676202f3175d",
-        "styles.css": "aff329a9bae868e38d1f32fa23329e9ecf9a3d12b7ec1fc6eaf5bbd2e70fcedb"
+        "manifest.json": "81edaea787a962cb41b00ab49ffa003ce7ea5a3141df731d220748cd2a1b0461",
+        "main.js": "9abaaee989efb7599245362c756eb901544de4ac3a91ff72e5d0de7f60c53fb9",
+        "styles.css": "e68e68cf069487135f0750c45ad7f056dd0001a4c3227254dacada9c0ae0264c"
       }
     },
     {
