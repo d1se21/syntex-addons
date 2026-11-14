@@ -152,6 +152,8 @@ const ICONS = {
   todo: 'M4.5 6.5l1.5 1.5 2.5-2.5M12 7h8M4.5 12.5l1.5 1.5 2.5-2.5M12 13h8M4.5 18.5l1.5 1.5 2.5-2.5M12 19h8',
   grid: 'M5 5h.01M12 5h.01M19 5h.01M5 12h.01M12 12h.01M19 12h.01M5 19h.01M12 19h.01M19 19h.01',
   chevron: 'M6 9l6 6 6-6',
+  chevronUp: 'M7 14l5-5 5 5',
+  shapes: 'M4 4h7v7H4zM17.5 4a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7M7.5 13.5l3.5 6.5H4zM17.5 13l3.5 3.5-3.5 3.5-3.5-3.5z',
   plus: 'M12 5v14M5 12h14'
 }
 /**
@@ -459,7 +461,9 @@ export default {
         if (!dirty || !board || broken) return
         if (!path) {
           // a board shown before it had a file: written the moment something is put on it
-          if (!board.cards.length) return
+          // (nor while the only blocks on it are new ones still being typed: Esc on an empty one takes it back,
+          // and no empty file is left behind; the end of the typing saves again)
+          if (!board.cards.some((c) => !fresh.has(c.id))) return
           const shown = board
           await materialize()
           if (!path || board !== shown) return
@@ -1290,7 +1294,8 @@ export default {
           if (editing !== card.id) return
           editing = null
           const isNew = fresh.delete(card.id)
-          const empty = !(cancel ? card.text ?? '' : field.value).replace(/\[( |x)\]/gi, '').trim()
+          // (Esc ends the typing and keeps what was typed, as a click elsewhere does: nothing typed is lost)
+          const empty = !field.value.replace(/\[( |x)\]/gi, '').trim()
           // an empty new card is taken back only by Esc; leaving it by a click elsewhere keeps it
           if (cancel && isNew && empty && card.type !== 'frame') {
             // (and its step of undo with it: making an empty card and taking it back is no step at all)
@@ -1311,10 +1316,10 @@ export default {
             canvas.focus()
             return
           }
-          if (!cancel && field.value !== (card.text ?? '')) {
+          if (field.value !== (card.text ?? '')) {
             card.text = field.value
             commit()
-          }
+          } else if (isNew) changed()
           renderCard(card)
           placeFloat()
           canvas.focus()
@@ -2611,7 +2616,9 @@ export default {
       })
 
       canvas.addEventListener('pointerdown', (e) => {
-        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock')) return
+        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes')) return
+        // (a press anywhere else on the field folds the panel of shapes)
+        if (!shapesPanel.hidden) toggleShapes(false)
         canvas.focus()
         if (arrowMode) {
           // a click on a card is handled by the card; here it was an empty place
@@ -2716,7 +2723,7 @@ export default {
       )
 
       canvas.addEventListener('dblclick', (e) => {
-        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock')) return
+        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes')) return
         // a double click on a bend point takes it away
         const wp = e.target.closest('.bd-wp')
         if (wp) {
@@ -2737,7 +2744,7 @@ export default {
       })
 
       canvas.addEventListener('contextmenu', (e) => {
-        if (!board || e.target.closest('.bd-search, .bd-mini')) return
+        if (!board || e.target.closest('.bd-search, .bd-mini, .bd-dock, .bd-shapes')) return
         e.preventDefault()
         if (broken) return
         const at = toWorld(e.clientX, e.clientY)
@@ -2861,7 +2868,8 @@ export default {
           e.preventDefault()
           removeSelected()
         } else if (e.key === 'Escape') {
-          if (arrowMode) stopArrowMode()
+          if (!shapesPanel.hidden) toggleShapes(false)
+          else if (arrowMode) stopArrowMode()
           else if (!searchBox.hidden) closeSearch()
           else setSel([])
         } else if (e.key.startsWith('Arrow') && sel.size) {
@@ -2926,6 +2934,7 @@ export default {
             )
         hint.classList.toggle('bad', broken)
         dock.hidden = broken
+        toggleShapes(false)
         canvas.classList.toggle('readonly', broken)
         syncToolbar()
       }
@@ -2962,15 +2971,19 @@ export default {
         if (p.extra) svg.append(svgEl('path', { d: p.extra }))
         return svg
       }
+      // the dock keeps what is used most; every shape of flowcharts is in "All shapes", a panel above it
+      const BASE_SHAPES = ['rect', 'diamond', 'terminator']
+      const dockItem = (id, ico, label, rest) => ({ id, ico, label, ...rest })
+      const shapeItem = (s) => ({ id: 'shape-' + s.id, shape: s.id, label: tt(s.ru, s.en), props: { type: 'shape', shape: s.id } })
       const DOCK = [
-        { id: 'text', ico: 'card', label: tt('Карточка', 'Card'), props: { type: 'text' } },
-        { id: 'sticky', ico: 'sticky', label: tt('Стикер', 'Sticky note'), props: { type: 'sticky', color: STICKY } },
-        { id: 'todo', ico: 'todo', label: tt('Чек-лист', 'Check list'), props: { type: 'todo', text: '[ ] ' } },
-        { id: 'note', ico: 'note', label: tt('Заметка из хранилища', 'Note from the vault'), pick: 'note' },
-        { id: 'media', ico: 'media', label: tt('Картинка или файл', 'Picture or file'), pick: 'file' },
-        { id: 'frame', ico: 'frame', label: tt('Рамка', 'Frame'), props: { type: 'frame', text: '' } },
+        dockItem('text', 'card', tt('Карточка', 'Card'), { props: { type: 'text' } }),
+        dockItem('sticky', 'sticky', tt('Стикер', 'Sticky note'), { props: { type: 'sticky', color: STICKY } }),
+        dockItem('todo', 'todo', tt('Чек-лист', 'Check list'), { props: { type: 'todo', text: '[ ] ' } }),
+        dockItem('note', 'note', tt('Заметка из хранилища', 'Note from the vault'), { pick: 'note' }),
+        dockItem('media', 'media', tt('Картинка или файл', 'Picture or file'), { pick: 'file' }),
+        dockItem('frame', 'frame', tt('Рамка', 'Frame'), { props: { type: 'frame', text: '' } }),
         null,
-        ...SHAPES.map((s) => ({ id: 'shape-' + s.id, shape: s.id, label: tt(s.ru, s.en), props: { type: 'shape', shape: s.id } }))
+        ...SHAPES.filter((s) => BASE_SHAPES.includes(s.id)).map(shapeItem)
       ]
       /** What a thing of the dock makes, put with its middle at `at` (null: a free place in the view). */
       const dropDock = (item, at, snap) => {
@@ -2979,11 +2992,23 @@ export default {
         else if (item.pick === 'file') pickFile(at, snap)
         else addCard({ ...item.props }, at, true, snap)
       }
+      const shapesPanel = el('div', { className: 'bd-shapes', hidden: true })
+      const shapesBtn = el('button', { className: 'bd-dock-btn bd-dock-more', title: tt('Все фигуры блок-схем', 'All the flowchart shapes') })
+      shapesBtn.dataset.kind = 'shapes'
+      shapesBtn.append(icon('shapes'), el('span', { className: 'bd-dock-more-label', textContent: tt('Фигуры', 'Shapes') }), icon('chevronUp'))
+      const toggleShapes = (open = shapesPanel.hidden) => {
+        shapesPanel.hidden = !open
+        shapesPanel.classList.remove('dragging')
+        shapesBtn.classList.toggle('on', open)
+      }
+      shapesBtn.addEventListener('pointerdown', (e) => e.stopPropagation())
+      shapesBtn.addEventListener('click', () => board && !broken && toggleShapes())
       const dockDown = (e, item, b) => {
         if (e.button !== 0 || !board || broken) return
         e.preventDefault()
         e.stopPropagation()
         b.setPointerCapture(e.pointerId)
+        const fromPanel = !!b.closest('.bd-shapes')
         const [w, h] = item.props ? sizeFor(item.props) : item.pick === 'note' ? SIZE.note : SIZE.file
         let dragging = false
         const over = (ev) => {
@@ -2996,6 +3021,8 @@ export default {
           if (!dragging) {
             if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return
             dragging = true
+            // (the panel of shapes steps out of the way of the field while one of its shapes is carried)
+            if (fromPanel) shapesPanel.classList.add('dragging')
             ghost.replaceChildren()
             ghost.className = 'bd-ghost' + (item.shape ? ' is-shape' : '') + (item.id === 'sticky' ? ' is-sticky' : '')
             if (item.shape) ghost.append(shapeSvg({ type: 'shape', shape: item.shape, w, h }))
@@ -3021,6 +3048,7 @@ export default {
           b.removeEventListener('pointercancel', up)
           ghost.hidden = true
           canvas.classList.remove('placing')
+          if (fromPanel) toggleShapes(false)
           if (ev.type === 'pointercancel') return
           if (!dragging) dropDock(item, null, false)
           else if (over(ev)) dropDock(item, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
@@ -3029,20 +3057,24 @@ export default {
         b.addEventListener('pointerup', up)
         b.addEventListener('pointercancel', up)
       }
-      for (const item of DOCK) {
-        if (!item) {
-          dock.append(el('span', { className: 'bd-dock-sep' }))
-          continue
-        }
-        const b = el('button', { className: 'bd-dock-btn', title: item.label + tt(' — перетащите на доску или щёлкните', ' — drag it onto the board or click') })
+      const dockButton = (item, withLabel = false) => {
+        const b = el('button', { className: 'bd-dock-btn' + (withLabel ? ' bd-shape-row' : ''), title: item.label + tt(' — перетащите на доску или щёлкните', ' — drag it onto the board or click') })
         b.dataset.kind = item.id
         b.append(item.shape ? shapeIcon(item.shape) : icon(item.ico))
+        if (withLabel) b.append(el('span', { textContent: item.label }))
         b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
-        dock.append(b)
+        return b
       }
+      for (const item of DOCK) dock.append(item ? dockButton(item) : el('span', { className: 'bd-dock-sep' }))
+      dock.append(shapesBtn)
+      shapesPanel.append(
+        el('div', { className: 'bd-shapes-head', textContent: tt('Фигуры блок-схем — перетащите на доску или щёлкните', 'Flowchart shapes — drag one onto the board or click it') }),
+        el('div', { className: 'bd-shapes-grid' }, SHAPES.map((s) => dockButton(shapeItem(s), true)))
+      )
+      canvas.append(shapesPanel)
       // (a wheel over the dock scrolls it sideways when it does not fit, never zooms the board)
+      for (const box of [dock, shapesPanel]) box.addEventListener('wheel', (e) => e.stopPropagation())
       dock.addEventListener('wheel', (e) => {
-        e.stopPropagation()
         if (dock.scrollWidth > dock.clientWidth) {
           e.preventDefault()
           dock.scrollLeft += e.deltaY || e.deltaX
@@ -3433,7 +3465,20 @@ export default {
       .bd-dock-btn .bd-ico { width: 20px; height: 20px; }
       .bd-dock-shape { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; overflow: visible; }
       .bd-dock-sep { flex: none; width: 1px; height: 22px; margin: 0 4px; background: var(--border); }
+      .bd-dock-btn.bd-dock-more { width: auto; gap: 5px; padding: 0 8px 0 9px; margin-left: 2px; cursor: pointer; font-size: 13px; }
+      .bd-dock-btn.bd-dock-more .bd-ico:last-child { width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; }
+      .bd-dock-btn.bd-dock-more.on { background: var(--bg-hover); color: var(--text); }
+      .bd-dock-btn.bd-dock-more.on .bd-ico:last-child { transform: rotate(180deg); }
+      @media (max-width: 1000px) { .bd-dock-more-label { display: none; } }
       @media (max-width: 900px) { .bd-dock { max-width: calc(100% - 140px); } }
+      .bd-shapes { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); z-index: 8; box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 90px); overflow-y: auto;
+        padding: 10px; border-radius: 12px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
+      .bd-shapes.dragging { opacity: 0; pointer-events: none; }
+      .bd-shapes-head { color: var(--text-3); font-size: 12px; padding: 0 4px 8px; }
+      .bd-shapes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 2px; }
+      .bd-dock-btn.bd-shape-row { width: auto; height: 38px; justify-content: flex-start; gap: 10px; padding: 0 10px; font-size: 13px; text-align: left; }
+      .bd-shape-row .bd-dock-shape { flex: none; width: 30px; }
+      .bd-shape-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .bd-ghost { position: absolute; z-index: 9; box-sizing: border-box; pointer-events: none; border-radius: 10px; border: 1.5px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
         display: flex; align-items: center; justify-content: center; color: var(--text-2); font-size: 13px; overflow: visible; }
       .bd-ghost.is-sticky { background: color-mix(in srgb, ${STICKY} 45%, transparent); }
