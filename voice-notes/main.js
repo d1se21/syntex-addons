@@ -432,10 +432,17 @@ export default {
           stop.onclick()
         }
       }, 500)
+      // an Esc that closes a menu, a dialog, a popup, the settings (inside the app, or in a window of their own:
+      // :root.has-popout, Syntex 0.1.22) or the list of slash commands is theirs. The recording is cancelled only by
+      // an Esc meant for the note (the cursor in it, or nowhere), and only in its first 2 seconds: a recording that has
+      // begun is never thrown away by a stray key (Cancel is there)
+      const busyElsewhere = () =>
+        !document.hasFocus() ||
+        document.documentElement.classList.contains('has-popout') ||
+        !!document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop, .addon-popup, .sl-box, .settings-body') ||
+        !(document.activeElement === document.body || document.activeElement?.closest?.('.cm-editor'))
       const onKey = (e) => {
-        // an Esc that closes a menu, a dialog, a popup or the list of slash commands is theirs; the recording is cancelled only by an Esc meant for
-        // the note, and only in its first seconds: a longer recording is never thrown away by a stray key (Cancel is there)
-        if (e.key === 'Escape' && elapsed() < 5 && !document.querySelector('.ctx-menu, .backdrop, .dialog-backdrop, .qs-backdrop, .addon-popup, .sl-box')) {
+        if (e.key === 'Escape' && elapsed() < 2 && !busyElsewhere()) {
           e.stopPropagation()
           finish()
         }

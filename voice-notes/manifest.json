@@ -8,7 +8,7 @@
     "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Кнопка «текст» на записи показывает, что в ней сказано, и прячет текст обратно; распознаёт Whisper на этом компьютере. Микрофон, модель и язык речи выбираются в настройках аддона.",
     "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The text button on a recording shows what is said in it and hides it again; Whisper recognises it on this computer. The microphone, the model and the language are chosen in the add-on's settings."
   },
-  "version": "1.4.1",
+  "version": "1.4.2",
   "author": "Syntex",
   "minApi": 6,
   "permissions": [
