@@ -1,10 +1,11 @@
-// Boards: an interactive board in a tab of its own; each board is a file of its own kind (Boards/Name.board, its data
-// as JSON), opened by a click on it in the tree. Boards of older versions (notes with a block of data) are moved to
-// such files once.
-// Cards of several kinds (text, sticky notes, notes of the vault with
-// a preview, pictures, links, check lists, shapes, frames), arrows with labels, selection by frame or by group, undo,
-// alignment, snapping, search, a minimap, and a right-click menu on everything. Each board is a note in the "Boards"
-// folder (a fenced block with its data), so it lives in the vault, is backed up and synced with it.
+// Boards: an interactive board in a tab of its own; each board is a file of its own kind (Name.board, its data as
+// JSON), opened by a click on it in the tree. A board is made at once, under a default name, the moment something is put
+// on an empty field (or by "New board"); its name is edited in the title of the board. Boards of older versions (notes
+// with a block of data in the "Boards" folder) are moved to such files once.
+// Cards of several kinds (text, sticky notes, notes of the vault with a preview, pictures, other files, links, check
+// lists, shapes of flowcharts, frames), a dock at the bottom to drag them from, arrows bound to the sides of cards (with
+// bend points and labels), selection by frame or by group, undo, alignment, snapping to the dots of the grid (Ctrl),
+// search, a minimap, and a right-click menu on everything.
 
 const FOLDER = 'Boards'
 const EXT = 'board'
@@ -15,8 +16,106 @@ const GRID = 24
 
 const COLORS = ['', '#8ab4f8', '#f28b82', '#fdd663', '#81c995', '#c58af9', '#fcad70', '#78d9ec', '#ff8bcb']
 const STICKY = '#fdd663'
-const DEF = { text: [220, 110], sticky: [180, 180], note: [250, 108], image: [260, 180], link: [280, 70], frame: [560, 360], shape: [170, 110], todo: [230, 140] }
-const MIN = { text: [90, 50], sticky: [90, 90], note: [150, 52], image: [60, 40], link: [160, 52], frame: [160, 100], shape: [70, 50], todo: [130, 70] }
+// (the size of a card that keeps none: cards of older versions were made so)
+const DEF = { text: [220, 110], sticky: [180, 180], note: [250, 108], image: [260, 180], file: [264, 72], link: [280, 70], frame: [560, 360], shape: [170, 110], todo: [230, 140] }
+// (the size a new card is made in: whole steps of the grid, so that a card put on the dots stays on them)
+const SIZE = { text: [216, 108], sticky: [168, 168], note: [264, 120], image: [264, 192], file: [264, 72], link: [288, 72], frame: [552, 360], shape: [168, 96], todo: [240, 144] }
+const MIN = { text: [90, 50], sticky: [90, 90], note: [150, 52], image: [60, 40], file: [150, 52], link: [160, 52], frame: [160, 100], shape: [48, 36], todo: [130, 70] }
+const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif|ico)$/i
+/** The shapes of flowcharts (as in Visio and draw.io): their names and the size they are made in. */
+const SHAPES = [
+  { id: 'rect', ru: 'Процесс', en: 'Process', size: [168, 96] },
+  { id: 'terminator', ru: 'Начало / конец', en: 'Start / end', size: [168, 72] },
+  { id: 'diamond', ru: 'Решение', en: 'Decision', size: [168, 120] },
+  { id: 'parallelogram', ru: 'Данные', en: 'Data', size: [192, 96] },
+  { id: 'document', ru: 'Документ', en: 'Document', size: [168, 108] },
+  { id: 'cylinder', ru: 'База данных', en: 'Database', size: [144, 120] },
+  { id: 'subprocess', ru: 'Подпроцесс', en: 'Subprocess', size: [192, 96] },
+  { id: 'manual', ru: 'Ручной ввод', en: 'Manual input', size: [168, 96] },
+  { id: 'delay', ru: 'Задержка', en: 'Delay', size: [168, 96] },
+  { id: 'hexagon', ru: 'Подготовка', en: 'Preparation', size: [192, 96] },
+  { id: 'trapezoid', ru: 'Ручная операция', en: 'Manual operation', size: [192, 96] },
+  { id: 'ellipse', ru: 'Эллипс', en: 'Ellipse', size: [144, 96] },
+  { id: 'circle', ru: 'Соединитель', en: 'Connector', size: [72, 72] }
+]
+const SIDES = ['top', 'right', 'bottom', 'left']
+const PORT_SIDE = { t: 'top', r: 'right', b: 'bottom', l: 'left' }
+const NORMAL = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }
+const OPPOSITE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }
+
+/** The outline of a shape of size w × h, as the `d` of a path (and the extra lines drawn over it). */
+const shapePath = (shape, w, h) => {
+  const W = w - 1
+  const H = h - 1
+  const e = 1
+  if (shape === 'ellipse' || shape === 'circle') {
+    const rx = w / 2 - 1
+    const ry = h / 2 - 1
+    return { d: `M${e} ${h / 2}A${rx} ${ry} 0 1 1 ${W} ${h / 2}A${rx} ${ry} 0 1 1 ${e} ${h / 2}Z` }
+  }
+  if (shape === 'diamond') return { d: `M${w / 2} ${e}L${W} ${h / 2}L${w / 2} ${H}L${e} ${h / 2}Z` }
+  if (shape === 'terminator') {
+    const r = Math.min(h / 2, w / 2) - 1
+    return { d: `M${e + r} ${e}H${W - r}A${r} ${r} 0 0 1 ${W - r} ${H}H${e + r}A${r} ${r} 0 0 1 ${e + r} ${e}Z` }
+  }
+  if (shape === 'parallelogram') {
+    const s = Math.min(w * 0.2, h * 0.5)
+    return { d: `M${e + s} ${e}H${W}L${W - s} ${H}H${e}Z` }
+  }
+  if (shape === 'document') {
+    const a = h * 0.1
+    return { d: `M${e} ${e}H${W}V${H - a}C${w * 0.75} ${H - 3 * a} ${w * 0.25} ${H + a} ${e} ${H - a}Z` }
+  }
+  if (shape === 'cylinder') {
+    const rx = w / 2 - 1
+    const ry = Math.min(h * 0.15, 18)
+    return {
+      d: `M${e} ${e + ry}A${rx} ${ry} 0 0 1 ${W} ${e + ry}V${H - ry}A${rx} ${ry} 0 0 1 ${e} ${H - ry}Z`,
+      extra: `M${e} ${e + ry}A${rx} ${ry} 0 0 0 ${W} ${e + ry}`
+    }
+  }
+  if (shape === 'subprocess') {
+    const s = Math.min(14, w * 0.1)
+    return { d: `M${e} ${e}H${W}V${H}H${e}Z`, extra: `M${e + s} ${e}V${H}M${W - s} ${e}V${H}` }
+  }
+  if (shape === 'manual') return { d: `M${e} ${h * 0.3}L${W} ${e}V${H}H${e}Z` }
+  if (shape === 'delay') {
+    const r = Math.min(h / 2, w / 2) - 1
+    return { d: `M${e} ${e}H${W - r}A${r} ${r} 0 0 1 ${W - r} ${H}H${e}Z` }
+  }
+  if (shape === 'hexagon') {
+    const s = Math.min(w * 0.2, h * 0.5)
+    return { d: `M${e + s} ${e}H${W - s}L${W} ${h / 2}L${W - s} ${H}H${e + s}L${e} ${h / 2}Z` }
+  }
+  if (shape === 'trapezoid') {
+    const s = Math.min(w * 0.18, h * 0.6)
+    return { d: `M${e} ${e}H${W}L${W - s} ${H}H${e + s}Z` }
+  }
+  const r = Math.min(6, w / 4, h / 4)
+  return { d: `M${e + r} ${e}H${W - r}Q${W} ${e} ${W} ${e + r}V${H - r}Q${W} ${H} ${W - r} ${H}H${e + r}Q${e} ${H} ${e} ${H - r}V${e + r}Q${e} ${e} ${e + r} ${e}Z` }
+}
+/** Where the text of a shape stays inside it: [top, right, bottom, left]. */
+const shapeInset = (shape, w, h) => {
+  if (shape === 'diamond') return [h * 0.2, w * 0.2, h * 0.2, w * 0.2]
+  if (shape === 'ellipse' || shape === 'circle') return [h * 0.14, w * 0.14, h * 0.14, w * 0.14]
+  if (shape === 'parallelogram' || shape === 'hexagon') return [6, Math.min(w * 0.2, h * 0.5) + 4, 6, Math.min(w * 0.2, h * 0.5) + 4]
+  if (shape === 'trapezoid') return [6, Math.min(w * 0.18, h * 0.6) / 2 + 8, 6, Math.min(w * 0.18, h * 0.6) / 2 + 8]
+  if (shape === 'cylinder') return [Math.min(h * 0.15, 18) * 2 + 2, 10, 6, 10]
+  if (shape === 'document') return [6, 12, h * 0.16, 12]
+  if (shape === 'subprocess') return [6, Math.min(14, w * 0.1) + 8, 6, Math.min(14, w * 0.1) + 8]
+  if (shape === 'manual') return [h * 0.26, 12, 6, 12]
+  if (shape === 'delay') return [6, Math.min(h / 2, w / 2) * 0.5 + 8, 6, 12]
+  if (shape === 'terminator') return [6, Math.min(h / 2, w / 2) * 0.6, 6, Math.min(h / 2, w / 2) * 0.6]
+  return [8, 12, 8, 12]
+}
+/** How far in from the middle of a side of its box the outline of a shape is (an arrow ends on the outline). */
+const sideInset = (shape, side, w, h) => {
+  if (shape === 'parallelogram' && (side === 'left' || side === 'right')) return Math.min(w * 0.2, h * 0.5) / 2
+  if (shape === 'trapezoid' && (side === 'left' || side === 'right')) return Math.min(w * 0.18, h * 0.6) / 2
+  if (shape === 'manual' && side === 'top') return h * 0.15
+  if (shape === 'document' && side === 'bottom') return h * 0.1
+  return 0
+}
 const FONTS = [13, 15, 19, 26]
 
 const el = (tag, props = {}, children = []) => {
@@ -44,7 +143,16 @@ const ICONS = {
   undo: 'M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
   redo: 'M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3',
   fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
-  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  card: 'M7 3h7l4 4v14H7zM14 3v4h4',
+  sticky: 'M5 4h14v10l-6 6H5zM13 20v-6h6',
+  note: 'M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 15.5h5M10 9h2',
+  media: 'M7 3h7l4 4v14H7zM14 3v4h4M9.5 18l2.5-3.5 1.8 2 1.2-1.3 1.5 2.8M11 10.5h.01',
+  frame: 'M4 8h16v12H4zM4 4.5h7',
+  todo: 'M4.5 6.5l1.5 1.5 2.5-2.5M12 7h8M4.5 12.5l1.5 1.5 2.5-2.5M12 13h8M4.5 18.5l1.5 1.5 2.5-2.5M12 19h8',
+  grid: 'M5 5h.01M12 5h.01M19 5h.01M5 12h.01M12 12h.01M19 12h.01M5 19h.01M12 19h.01M19 19h.01',
+  chevron: 'M6 9l6 6 6-6',
+  plus: 'M12 5v14M5 12h14'
 }
 /**
  * The box of an icon, moved onto its drawing so that the icon is in the middle of its button (the hand and the
@@ -75,7 +183,7 @@ const boxOf = (name) => {
 const icon = (name) => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', boxOf(name))
-  svg.setAttribute('class', 'bd-ico' + (name === 'more' ? ' bd-ico-dots' : ''))
+  svg.setAttribute('class', 'bd-ico' + (name === 'more' || name === 'grid' ? ' bd-ico-dots' : ''))
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   p.setAttribute('d', ICONS[name])
   svg.append(p)
@@ -107,6 +215,34 @@ const boundsOf = (cards) => {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
+/** The sides of two cards that face each other (along the axis on which they are further apart). */
+const autoSides = (a, b) => {
+  const ra = rectOf(a)
+  const rb = rectOf(b)
+  const dx = rb.x + rb.w / 2 - (ra.x + ra.w / 2)
+  const dy = rb.y + rb.h / 2 - (ra.y + ra.h / 2)
+  // (the gap between the boxes, not between their middles: a wide card above a narrow one is joined top to bottom)
+  const gx = Math.abs(dx) - (ra.w + rb.w) / 2
+  const gy = Math.abs(dy) - (ra.h + rb.h) / 2
+  if (gx > gy) return dx >= 0 ? { from: 'right', to: 'left' } : { from: 'left', to: 'right' }
+  return dy >= 0 ? { from: 'bottom', to: 'top' } : { from: 'top', to: 'bottom' }
+}
+/** The side of a card nearest to a point. */
+const sideNear = (c, p) => {
+  const r = rectOf(c)
+  const d = { top: Math.abs(p.y - r.y), bottom: Math.abs(p.y - r.y - r.h), left: Math.abs(p.x - r.x), right: Math.abs(p.x - r.x - r.w) }
+  return SIDES.reduce((best, s) => (d[s] < d[best] ? s : best), 'top')
+}
+/** The point where an arrow is fastened to the side of a card (on the outline of a shape), and the way out of it. */
+const anchorOf = (c, side) => {
+  const r = rectOf(c)
+  const inset = c.type === 'shape' ? sideInset(c.shape ?? 'rect', side, r.w, r.h) : 0
+  const [nx, ny] = NORMAL[side]
+  const x = side === 'left' ? r.x + inset : side === 'right' ? r.x + r.w - inset : r.x + r.w / 2
+  const y = side === 'top' ? r.y + inset : side === 'bottom' ? r.y + r.h - inset : r.y + r.h / 2
+  return { x, y, nx, ny }
+}
+
 /** The text of a board's file: its data, as JSON (where it is looked at is kept by the add-on, not in the file). */
 function serialize(name, board) {
   void name
@@ -126,8 +262,23 @@ function normalize(b) {
     const type = types.includes(c.type) ? c.type : c.note ? 'note' : 'text'
     cards.push({ ...c, type })
   }
-  const ids = new Set(cards.map((c) => c.id))
-  const links = b.links.filter((l) => l && typeof l.id === 'string' && ids.has(l.from) && ids.has(l.to) && l.from !== l.to)
+  const ids = new Map(cards.map((c) => [c.id, c]))
+  const links = b.links
+    .filter((l) => l && typeof l.id === 'string' && ids.has(l.from) && ids.has(l.to) && l.from !== l.to)
+    .map((l) => {
+      const out = { ...l }
+      // arrows of older versions went from the middle to the middle: they are bound to the sides facing each other once
+      if (!SIDES.includes(out.fromSide) || !SIDES.includes(out.toSide)) {
+        const s = autoSides(ids.get(l.from), ids.get(l.to))
+        if (!SIDES.includes(out.fromSide)) out.fromSide = s.from
+        if (!SIDES.includes(out.toSide)) out.toSide = s.to
+      }
+      if (Array.isArray(out.pts)) {
+        out.pts = out.pts.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).map((p) => ({ x: p.x, y: p.y }))
+        if (!out.pts.length) delete out.pts
+      } else delete out.pts
+      return out
+    })
   const view = b.view && Number.isFinite(b.view.k) && Number.isFinite(b.view.x) && Number.isFinite(b.view.y) ? b.view : { x: 0, y: 0, k: 1 }
   return { v: 3, cards, links, view, settings: { ...newBoard().settings, ...(b.settings ?? {}) } }
 }
@@ -259,6 +410,8 @@ export default {
 
       /* ---------- the frame of the tab ---------- */
       const select = el('select', { className: 'bd-select' })
+      // (the list of boards: an arrow button; the list itself is the select, unseen over it)
+      const selectWrap = el('span', { className: 'bd-boards' }, [icon('chevron'), select])
       const btn = (label, onclick, title = '', cls = '') =>
         el('button', { className: 'btn bd-btn ' + cls, onclick, title }, ICONS[label] ? [icon(label)] : [document.createTextNode(label)])
       const toolbar = el('div', { className: 'bd-toolbar' })
@@ -274,8 +427,10 @@ export default {
       const linkLayer = svgEl('g')
       const temp = svgEl('line', { class: 'bd-temp', visibility: 'hidden' })
       links.append(defs, linkLayer, temp)
+      // (the handles of the chosen arrow are over the cards: its ends lie on their edges)
+      const handleLayer = svgEl('svg', { class: 'bd-links bd-handles', width: 1, height: 1 })
       const guides = svgEl('svg', { class: 'bd-links bd-guides', width: 1, height: 1 })
-      world.append(frameLayer, links, cardLayer, guides)
+      world.append(frameLayer, links, cardLayer, handleLayer, guides)
       const band = el('div', { className: 'bd-band', hidden: true })
       const hint = el('div', { className: 'bd-hint' })
       const floatBar = el('div', { className: 'bd-float', hidden: true })
@@ -291,7 +446,9 @@ export default {
       const searchInput = el('input', { placeholder: tt('Найти на доске…', 'Find on the board…'), spellcheck: false })
       const searchCount = el('span', { className: 'bd-search-count' })
       searchBox.append(searchInput, searchCount, el('button', { textContent: '×', onclick: () => closeSearch() }))
-      canvas.append(world, band, hint, floatBar, zoomBox, mini, searchBox)
+      const dock = el('div', { className: 'bd-dock' })
+      const ghost = el('div', { className: 'bd-ghost', hidden: true })
+      canvas.append(world, band, hint, floatBar, zoomBox, mini, searchBox, dock, ghost)
       root.append(toolbar, canvas)
       canvas.dataset.dropFiles = ''
 
@@ -299,7 +456,14 @@ export default {
       const write = async () => {
         clearTimeout(saveTimer)
         saveTimer = null
-        if (!dirty || !board || broken || !path) return
+        if (!dirty || !board || broken) return
+        if (!path) {
+          // a board shown before it had a file: written the moment something is put on it
+          if (!board.cards.length) return
+          const shown = board
+          await materialize()
+          if (!path || board !== shown) return
+        }
         dirty = false
         const text = serialize(nameOf(path), board)
         lastWritten = text
@@ -380,8 +544,12 @@ export default {
         let step = GRID * k
         while (step < 14) step *= 2
         canvas.style.backgroundSize = `${step}px ${step}px`
-        canvas.style.backgroundPosition = `${x}px ${y}px`
+        // (a dot is drawn in the middle of its cell: the cells are moved by half a cell so that the dots are where
+        // the corners of cards snap to, on whole steps of the grid)
+        const half = board.settings.grid === 'dots' ? step / 2 : 0
+        canvas.style.backgroundPosition = `${x - half}px ${y - half}px`
         zoomLabel.textContent = Math.round(k * 100) + '%'
+        if (selLink) drawLinks()
         placeFloat()
         drawMini()
       }
@@ -429,46 +597,151 @@ export default {
       }
 
       /* ---------- arrows ---------- */
-      /** Where the line from the middle of the card towards a point leaves the edge of the card. */
-      const edgeToward = (c, tx, ty) => {
-        const s = sizeOf(c)
-        const cx = c.x + s.w / 2
-        const cy = c.y + s.h / 2
-        const dx = tx - cx
-        const dy = ty - cy
-        if (!dx && !dy) return { x: cx, y: cy }
-        const f = Math.min(dx ? s.w / 2 / Math.abs(dx) : Infinity, dy ? s.h / 2 / Math.abs(dy) : Infinity)
-        return { x: cx + dx * f, y: cy + dy * f }
-      }
       const centerOf = (c) => {
         const s = sizeOf(c)
         return { x: c.x + s.w / 2, y: c.y + s.h / 2 }
       }
+      /** The two ends of an arrow: on the sides of the cards it was fastened to. */
+      const endsOf = (l) => {
+        const a = byId(l.from)
+        const b = byId(l.to)
+        if (!a || !b) return null
+        const auto = !SIDES.includes(l.fromSide) || !SIDES.includes(l.toSide) ? autoSides(a, b) : null
+        return { A: anchorOf(a, SIDES.includes(l.fromSide) ? l.fromSide : auto.from), B: anchorOf(b, SIDES.includes(l.toSide) ? l.toSide : auto.to) }
+      }
+      const dedupe = (pts) => {
+        const out = []
+        for (const p of pts) {
+          const q = out[out.length - 1]
+          if (q && Math.abs(q.x - p.x) < 0.5 && Math.abs(q.y - p.y) < 0.5) continue
+          // (three points on one straight line: the middle one is no corner)
+          const o = out[out.length - 2]
+          if (o && q && ((Math.abs(o.x - q.x) < 0.5 && Math.abs(q.x - p.x) < 0.5) || (Math.abs(o.y - q.y) < 0.5 && Math.abs(q.y - p.y) < 0.5))) out.pop()
+          out.push(p)
+        }
+        return out
+      }
+      /** The corners of a line at right angles from A through the bend points to B (out of each side straight first). */
+      const elbowPoints = (A, B, pts) => {
+        const S = 22
+        const A1 = { x: A.x + A.nx * S, y: A.y + A.ny * S }
+        const B1 = { x: B.x + B.nx * S, y: B.y + B.ny * S }
+        const out = [A, A1]
+        const stops = [...pts, B1]
+        let horizontal = A.nx !== 0
+        let p = A1
+        stops.forEach((q, i) => {
+          const last = i === stops.length - 1
+          if (last && !pts.length && horizontal === (B.nx !== 0)) {
+            // side to side of the same kind: a step in the middle
+            if (horizontal) {
+              const mx = (p.x + q.x) / 2
+              out.push({ x: mx, y: p.y }, { x: mx, y: q.y })
+            } else {
+              const my = (p.y + q.y) / 2
+              out.push({ x: p.x, y: my }, { x: q.x, y: my })
+            }
+          } else if (last && horizontal === (B.nx !== 0)) {
+            // (the way into the stub before B goes across B's own direction)
+            out.push(horizontal ? { x: p.x, y: q.y } : { x: q.x, y: p.y })
+          } else {
+            out.push(horizontal ? { x: q.x, y: p.y } : { x: p.x, y: q.y })
+            horizontal = !horizontal
+          }
+          out.push(q)
+          p = q
+        })
+        out.push(B)
+        return dedupe(out)
+      }
+      const bez = (p0, c1, c2, p1, t) => {
+        const u = 1 - t
+        return {
+          x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p1.x,
+          y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p1.y
+        }
+      }
+      /**
+       * The way of an arrow: its `d`, points along it (for its label and for finding where a bend point goes) and the
+       * points it is steered by (its ends and its bend points).
+       */
+      const routeOf = (l) => {
+        const ends = endsOf(l)
+        if (!ends) return null
+        const { A, B } = ends
+        const pts = l.pts ?? []
+        const ctrl = [A, ...pts, B]
+        let line
+        let d
+        if (l.curve) {
+          // a smooth line through the bend points, out of each side straight away from the card
+          const segs = []
+          for (let i = 0; i < ctrl.length - 1; i++) {
+            const p0 = ctrl[i]
+            const p1 = ctrl[i + 1]
+            const len = Math.hypot(p1.x - p0.x, p1.y - p0.y)
+            const reach = clamp(len * 0.45, 24, 180)
+            const t0 = i === 0 ? { x: A.nx * reach, y: A.ny * reach } : { x: (p1.x - ctrl[i - 1].x) / 6, y: (p1.y - ctrl[i - 1].y) / 6 }
+            const t1 = i === ctrl.length - 2 ? { x: -B.nx * reach, y: -B.ny * reach } : { x: (ctrl[i + 2].x - p0.x) / 6, y: (ctrl[i + 2].y - p0.y) / 6 }
+            segs.push([p0, { x: p0.x + t0.x, y: p0.y + t0.y }, { x: p1.x - t1.x, y: p1.y - t1.y }, p1])
+          }
+          d = `M${A.x} ${A.y}` + segs.map(([, c1, c2, p1]) => `C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${p1.x} ${p1.y}`).join('')
+          line = [A]
+          for (const s of segs) for (let k = 1; k <= 16; k++) line.push(bez(s[0], s[1], s[2], s[3], k / 16))
+        } else {
+          line = l.elbow ? elbowPoints(A, B, pts) : ctrl
+          d = 'M' + line.map((p) => `${p.x} ${p.y}`).join('L')
+        }
+        // the middle of its length, for the label
+        let total = 0
+        for (let i = 1; i < line.length; i++) total += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y)
+        let mid = line[0]
+        let walked = 0
+        for (let i = 1; i < line.length; i++) {
+          const seg = Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y)
+          if (walked + seg >= total / 2) {
+            const t = seg ? (total / 2 - walked) / seg : 0
+            mid = { x: line[i - 1].x + (line[i].x - line[i - 1].x) * t, y: line[i - 1].y + (line[i].y - line[i - 1].y) * t }
+            break
+          }
+          walked += seg
+        }
+        return { d, line, ctrl, mid, A, B }
+      }
+      const distToSeg = (p, a, b) => {
+        const dx = b.x - a.x
+        const dy = b.y - a.y
+        const len = dx * dx + dy * dy
+        const t = len ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / len, 0, 1) : 0
+        return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t)
+      }
+      /** Where among the bend points of an arrow a new one at `p` goes (between the two it is nearest to the line of). */
+      const bendIndex = (l, p) => {
+        const r = routeOf(l)
+        if (!r) return 0
+        let best = 0
+        let bd = Infinity
+        for (let i = 0; i < r.ctrl.length - 1; i++) {
+          const dd = distToSeg(p, r.ctrl[i], r.ctrl[i + 1])
+          if (dd < bd) {
+            bd = dd
+            best = i
+          }
+        }
+        return best
+      }
+      const snapPt = (p, on) => (on ? { x: Math.round(p.x / GRID) * GRID, y: Math.round(p.y / GRID) * GRID } : { x: Math.round(p.x), y: Math.round(p.y) })
+      const linkMid = new Map()
       const drawLinks = () => {
         linkLayer.replaceChildren()
-        const byId = new Map(board.cards.map((c) => [c.id, c]))
+        handleLayer.replaceChildren()
+        linkMid.clear()
         for (const l of board.links) {
-          const a = byId.get(l.from)
-          const b = byId.get(l.to)
-          if (!a || !b) continue
-          const ca = centerOf(a)
-          const cb = centerOf(b)
-          let p
-          let q
-          let ctrl = null
-          if (l.curve) {
-            const mx = (ca.x + cb.x) / 2
-            const my = (ca.y + cb.y) / 2
-            const len = Math.hypot(cb.x - ca.x, cb.y - ca.y) || 1
-            ctrl = { x: mx - ((cb.y - ca.y) / len) * len * 0.22, y: my + ((cb.x - ca.x) / len) * len * 0.22 }
-            p = edgeToward(a, ctrl.x, ctrl.y)
-            q = edgeToward(b, ctrl.x, ctrl.y)
-          } else {
-            p = edgeToward(a, cb.x, cb.y)
-            q = edgeToward(b, ca.x, ca.y)
-          }
+          const r = routeOf(l)
+          if (!r) continue
+          const { d } = r
+          linkMid.set(l.id, r.mid)
           const g = svgEl('g', { class: 'bd-link' + (selLink === l.id ? ' on' : ''), 'data-id': l.id })
-          const d = ctrl ? `M${p.x} ${p.y} Q${ctrl.x} ${ctrl.y} ${q.x} ${q.y}` : `M${p.x} ${p.y} L${q.x} ${q.y}`
           const head = l.head ?? 'end'
           const line = svgEl('path', {
             d,
@@ -481,17 +754,27 @@ export default {
           if (l.style === 'dotted') line.style.strokeDasharray = '2 6'
           g.append(line, svgEl('path', { d, class: 'bd-hit' }))
           if (l.label) {
-            const mid = ctrl ? { x: 0.25 * p.x + 0.5 * ctrl.x + 0.25 * q.x, y: 0.25 * p.y + 0.5 * ctrl.y + 0.25 * q.y } : { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
-            const text = svgEl('text', { x: mid.x, y: mid.y, class: 'bd-label', 'text-anchor': 'middle', 'dominant-baseline': 'central' })
+            const text = svgEl('text', { x: r.mid.x, y: r.mid.y, class: 'bd-label', 'text-anchor': 'middle', 'dominant-baseline': 'central' })
             text.textContent = l.label
             g.append(text)
           }
           linkLayer.append(g)
+          if (selLink === l.id && !sel.size) {
+            // the handles of the chosen arrow: its two ends (dragged to another side or card) and its bend points
+            const k = board.view.k
+            for (const [end, p] of [['from', r.A], ['to', r.B]]) {
+              handleLayer.append(svgEl('circle', { cx: p.x, cy: p.y, r: 5.5 / k, class: 'bd-end', 'data-link': l.id, 'data-end': end, 'stroke-width': 2 / k }))
+            }
+            ;(l.pts ?? []).forEach((p, i) => {
+              handleLayer.append(svgEl('circle', { cx: p.x, cy: p.y, r: 5 / k, class: 'bd-wp', 'data-link': l.id, 'data-i': i, 'stroke-width': 2 / k }))
+            })
+          }
         }
       }
-      const addLink = (from, to) => {
+      const addLink = (from, to, fromSide, toSide) => {
         if (from === to || board.links.some((l) => l.from === from && l.to === to)) return null
-        const l = { id: uid(), from, to, head: 'end', style: 'solid' }
+        const auto = autoSides(byId(from), byId(to))
+        const l = { id: uid(), from, to, fromSide: fromSide ?? auto.from, toSide: toSide ?? auto.to, head: 'end', style: 'solid' }
         board.links.push(l)
         drawLinks()
         commit()
@@ -521,13 +804,21 @@ export default {
       const shapeSvg = (card) => {
         const s = sizeOf(card)
         const svg = svgEl('svg', { class: 'bd-shape-svg', viewBox: `0 0 ${s.w} ${s.h}`, preserveAspectRatio: 'none' })
-        const attrs = { class: 'bd-shape-fill', 'vector-effect': 'non-scaling-stroke' }
-        let shape
-        if (card.shape === 'ellipse') shape = svgEl('ellipse', { cx: s.w / 2, cy: s.h / 2, rx: s.w / 2 - 1, ry: s.h / 2 - 1, ...attrs })
-        else if (card.shape === 'diamond') shape = svgEl('polygon', { points: `${s.w / 2},1 ${s.w - 1},${s.h / 2} ${s.w / 2},${s.h - 1} 1,${s.h / 2}`, ...attrs })
-        else shape = svgEl('rect', { x: 1, y: 1, width: s.w - 2, height: s.h - 2, rx: 12, ...attrs })
-        svg.append(shape)
+        const p = shapePath(card.shape ?? 'rect', s.w, s.h)
+        svg.append(svgEl('path', { d: p.d, class: 'bd-shape-fill', 'vector-effect': 'non-scaling-stroke' }))
+        if (p.extra) svg.append(svgEl('path', { d: p.extra, class: 'bd-shape-line', 'vector-effect': 'non-scaling-stroke' }))
         return svg
+      }
+      /** The outline and the place of the text of a shape follow its size (while it is resized, say). */
+      const redrawShape = (card) => {
+        const node = cardEls.get(card.id)
+        const old = node?.querySelector('.bd-shape-svg')
+        if (!old) return
+        old.replaceWith(shapeSvg(card))
+        const s = sizeOf(card)
+        const [t, r, b, l] = shapeInset(card.shape ?? 'rect', s.w, s.h)
+        const text = node.querySelector('.bd-shape-text')
+        if (text) text.style.padding = `${t}px ${r}px ${b}px ${l}px`
       }
 
       const renderCard = (card) => {
@@ -543,7 +834,27 @@ export default {
         if (card.type === 'text' || card.type === 'sticky') {
           body.append(el('div', { className: 'bd-text', textContent: card.text ?? '' }))
         } else if (card.type === 'shape') {
-          body.append(shapeSvg(card), el('div', { className: 'bd-text bd-shape-text', textContent: card.text ?? '' }))
+          const s = sizeOf(card)
+          const [t, r, b, l] = shapeInset(card.shape ?? 'rect', s.w, s.h)
+          const text = el('div', { className: 'bd-shape-text' }, [el('div', { className: 'bd-text', textContent: card.text ?? '' })])
+          text.style.padding = `${t}px ${r}px ${b}px ${l}px`
+          body.append(shapeSvg(card), text)
+        } else if (card.type === 'file') {
+          const name = card.src.split('/').pop()
+          const dot = name.lastIndexOf('.')
+          const ok = api.vault.listFiles().includes(card.src)
+          const ico = icon('card')
+          ico.classList.add('bd-file-ico')
+          body.append(
+            el('div', { className: 'bd-file' }, [
+              ico,
+              el('div', { className: 'bd-file-text' }, [
+                el('div', { className: 'bd-file-name' + (ok ? '' : ' gone'), textContent: dot > 0 ? name.slice(0, dot) : name, title: ok ? card.src : tt('Файла нет', 'No such file') }),
+                el('div', { className: 'bd-file-path', textContent: card.src.includes('/') ? card.src.slice(0, card.src.lastIndexOf('/')) : tt('Хранилище', 'Vault') })
+              ]),
+              el('span', { className: 'bd-file-ext', textContent: dot > 0 ? name.slice(dot + 1).toUpperCase() : '' })
+            ])
+          )
         } else if (card.type === 'frame') {
           body.append(el('div', { className: 'bd-frame-title', textContent: card.text || tt('Рамка', 'Frame') }))
         } else if (card.type === 'note') {
@@ -707,7 +1018,7 @@ export default {
             floatBar.hidden = true
             return
           }
-          const m = { x: (centerOf(a).x + centerOf(b).x) / 2, y: (centerOf(a).y + centerOf(b).y) / 2 }
+          const m = linkMid.get(l.id) ?? { x: (centerOf(a).x + centerOf(b).x) / 2, y: (centerOf(a).y + centerOf(b).y) / 2 }
           anchor = { x: m.x, y: m.y - 14 }
           floatBar.append(
             floatBtn('pencil', tt('Подпись', 'Label'), () => editLabel(l)),
@@ -741,13 +1052,19 @@ export default {
         return { x, y }
       }
 
-      const addCard = (props, at, edit = true) => {
-        const [dw, dh] = DEF[props.type]
+      /** The size a new card of these properties is made in. */
+      const sizeFor = (props) => (props.type === 'shape' ? SHAPES.find((s) => s.id === (props.shape ?? 'rect'))?.size ?? SIZE.shape : SIZE[props.type])
+      /**
+       * A new card. `at` is the middle of where it goes (null: a free place in the middle of the view); `snap`: its
+       * corner on a dot of the grid.
+       */
+      const addCard = (props, at, edit = true, snap = false) => {
+        const [dw, dh] = sizeFor(props)
         const w = props.w ?? dw
         const h = props.h ?? dh
-        const p = freeSpot(w, h, at)
-        const card = { id: uid(), x: p.x, y: p.y, ...props }
-        if (card.w === undefined && (w !== dw || h !== dh)) card.w = w
+        let p = freeSpot(w, h, at)
+        if (snap || board.settings.snapGrid) p = snapPt(p, true)
+        const card = { id: uid(), x: p.x, y: p.y, ...props, w, h }
         // frames go to the back of the array, the rest to the front
         if (card.type === 'frame') board.cards.unshift(card)
         else board.cards.push(card)
@@ -762,10 +1079,12 @@ export default {
         return card
       }
 
+      /** The bend points of an arrow moved with its cards. */
+      const movedPts = (l, dx, dy) => (Array.isArray(l.pts) && l.pts.length ? { pts: l.pts.map((p) => ({ x: p.x + dx, y: p.y + dy })) } : {})
       const cloneCards = (cards, dx, dy) => {
         const ids = new Map(cards.map((c) => [c.id, uid()]))
         const copies = cards.map((c) => ({ ...JSON.parse(JSON.stringify(c)), id: ids.get(c.id), x: c.x + dx, y: c.y + dy }))
-        const arrows = board.links.filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to) }))
+        const arrows = board.links.filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to), ...movedPts(l, dx, dy) }))
         return { copies, arrows }
       }
       const insertClones = ({ copies, arrows }, quiet = false) => {
@@ -840,7 +1159,7 @@ export default {
               const dy = at ? at.y - b.y - b.h / 2 : 28 * pasteShift
               const ids = new Map(cards.map((c) => [c.id, uid()]))
               const copies = cards.map((c) => ({ ...c, id: ids.get(c.id), x: Math.round(c.x + dx), y: Math.round(c.y + dy) }))
-              const arrows = (src.links ?? []).filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to) }))
+              const arrows = (src.links ?? []).filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => ({ ...l, id: uid(), from: ids.get(l.from), to: ids.get(l.to), ...movedPts(l, Math.round(dx), Math.round(dy)) }))
               insertClones({ copies, arrows })
               return
             }
@@ -935,7 +1254,9 @@ export default {
         const node = cardEls.get(card.id)
         if (!node) return
         const frame = card.type === 'frame'
-        const wrap = node.querySelector(frame ? '.bd-frame-title' : '.bd-body')
+        const shape = card.type === 'shape'
+        // (a shape keeps its outline while its text is typed: the field goes where the text is, inside it)
+        const wrap = node.querySelector(frame ? '.bd-frame-title' : shape ? '.bd-shape-text' : '.bd-body')
         if (!wrap) return
         editing = card.id
         placeFloat()
@@ -952,6 +1273,16 @@ export default {
           field.value = (card.text ?? '').split('\n').map((l) => (/^\[( |x)\]/i.test(l) ? l : l ? '[ ] ' + l : l)).join('\n') || '[ ] '
         }
         wrap.replaceChildren(field)
+        if (shape) {
+          // as high as its lines, in the middle of the shape
+          field.rows = 1
+          const grow = () => {
+            field.style.height = 'auto'
+            field.style.height = Math.min(field.scrollHeight, wrap.clientHeight) + 'px'
+          }
+          field.addEventListener('input', grow)
+          grow()
+        }
         field.focus()
         if (target === 'all') field.select()
         else field.setSelectionRange(field.value.length, field.value.length)
@@ -992,7 +1323,11 @@ export default {
         field.onkeydown = (e) => {
           e.stopPropagation()
           if (e.key === 'Escape') done(true)
-          else if (e.key === 'Enter' && (e.ctrlKey || frame)) done(false)
+          // (in a shape Enter finishes the text, Shift+Enter starts a new line)
+          else if (e.key === 'Enter' && (e.ctrlKey || frame || (shape && !e.shiftKey))) {
+            e.preventDefault()
+            done(false)
+          }
           else if (e.key === 'Enter' && card.type === 'todo') {
             e.preventDefault()
             const at = field.selectionStart
@@ -1010,16 +1345,24 @@ export default {
       }
       const reverseLink = (l) => {
         ;[l.from, l.to] = [l.to, l.from]
+        ;[l.fromSide, l.toSide] = [l.toSide, l.fromSide]
+        if (l.pts) l.pts = [...l.pts].reverse()
         drawLinks()
         commit()
       }
       /** Double click: edit a card of text, open a note or a link. */
+      /** A file of a card opened where it opens: a board here, a note in Syntex, anything else in its program. */
+      const openAny = (p) => {
+        if (/\.board$/i.test(p)) void controller?.open(p)
+        else if (/\.md$/i.test(p)) api.vault.open(p)
+        else void files.openFile(p)
+      }
       const activate = (card) => {
-        if (card.locked && !['note', 'link'].includes(card.type)) return
+        if (card.locked && !['note', 'link', 'image', 'file'].includes(card.type)) return
         if (card.type === 'note') {
           if (api.vault.list().includes(card.note)) api.vault.open(card.note)
         } else if (card.type === 'link') window.open(normUrl(card.url))
-        else if (card.type === 'image') void files.openFile(card.src)
+        else if (card.type === 'image' || card.type === 'file') openAny(card.src)
         else startEdit(card)
       }
 
@@ -1074,6 +1417,30 @@ export default {
         }
         return { dx: nx - box.x, dy: ny - box.y, lines }
       }
+      /** A size of whole steps of the grid near this one (never below the least size of the card). */
+      const gridSize = (c, w, h) => {
+        const [mw, mh] = MIN[c.type]
+        const step = (v, min) => Math.max(Math.ceil(min / GRID), Math.round(v / GRID)) * GRID
+        return { w: step(w, mw), h: step(h, mh) }
+      }
+      /** "Align to the grid": the corners of the cards on the nearest dots, their sizes whole steps of the grid. */
+      const alignToGrid = (cards) => {
+        const list = cards.filter((c) => !c.locked)
+        if (!list.length) return
+        for (const c of list) {
+          const s = sizeOf(c)
+          c.x = Math.round(c.x / GRID) * GRID
+          c.y = Math.round(c.y / GRID) * GRID
+          const g = gridSize(c, s.w, s.h)
+          c.w = g.w
+          c.h = g.h
+          place(c)
+          if (c.type === 'shape') redrawShape(c)
+        }
+        drawLinks()
+        placeFloat()
+        commit()
+      }
       const showGuides = (lines) => {
         guides.replaceChildren()
         for (const l of lines) {
@@ -1091,21 +1458,35 @@ export default {
         if (spaceDown || tool === 'hand') return // the canvas pans
         e.stopPropagation()
         canvas.focus()
-        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        if (e.shiftKey) {
           const next = new Set(sel)
           if (next.has(card.id)) next.delete(card.id)
           else next.add(card.id)
           setSel(next)
           return
         }
-        if (!sel.has(card.id)) setSel([card.id])
-        else if (selLink) setSel(sel)
-        let moving = withMembers(selected()).filter((c) => !c.locked)
-        if (!moving.length) return
-        const origin = new Map(moving.map((c) => [c.id, { x: c.x, y: c.y }]))
+        // Ctrl: a click adds the card to the choice (or takes it out); a drag puts the cards on the dots of the grid
+        const ctrlDown = e.ctrlKey || e.metaKey
+        if (!ctrlDown) {
+          if (!sel.has(card.id)) setSel([card.id])
+          else if (selLink) setSel(sel)
+        }
+        let moving = []
+        const origin = new Map()
+        // the bend points of the arrows whose both ends are moved go with them
+        let bends = []
+        const take = () => {
+          moving = withMembers(selected()).filter((c) => !c.locked)
+          origin.clear()
+          for (const c of moving) origin.set(c.id, { x: c.x, y: c.y, ...sizeOf(c) })
+          const ids = new Set(moving.map((c) => c.id))
+          bends = board.links.filter((l) => l.pts?.length && ids.has(l.from) && ids.has(l.to)).map((l) => ({ l, pts: l.pts.map((p) => ({ ...p })) }))
+        }
+        if (!ctrlDown) take()
+        if (!ctrlDown && !moving.length) return
         const start = { x: e.clientX, y: e.clientY }
         const startAlt = e.altKey
-        let box = boundsOf(moving)
+        let box = moving.length ? boundsOf(moving) : null
         let moved = false
         node.setPointerCapture(e.pointerId)
         const move = (ev) => {
@@ -1115,27 +1496,64 @@ export default {
           if (!moved) {
             if (Math.hypot(dx, dy) * k < 3) return
             moved = true
+            if (ctrlDown) {
+              // (a card dragged with Ctrl that was not chosen is moved alone)
+              if (!sel.has(card.id) || selLink) setSel([card.id])
+              take()
+              if (!moving.length) return
+              box = boundsOf(moving)
+            }
             if (startAlt) {
               // Alt: the copies are what is dragged, the originals stay
               const made = cloneCards(moving, 0, 0)
               insertClones(made, true)
               moving = made.copies
               origin.clear()
-              for (const c of moving) origin.set(c.id, { x: c.x, y: c.y })
+              for (const c of moving) origin.set(c.id, { x: c.x, y: c.y, ...sizeOf(c) })
               box = boundsOf(moving)
+              bends = []
             }
             canvas.classList.add('moving')
           }
-          const snapped = snapMove(box, dx, dy, new Set(moving.map((c) => c.id)), ev.altKey && !startAlt)
-          dx = snapped.dx
-          dy = snapped.dy
-          for (const c of moving) {
-            const o = origin.get(c.id)
-            c.x = Math.round(o.x + dx)
-            c.y = Math.round(o.y + dy)
-            place(c)
+          if (!moving.length) return
+          const grid = ev.ctrlKey || ev.metaKey
+          let lines = []
+          if (grid) {
+            // every card on the dots: its corner on the nearest one, its size whole steps of the grid
+            for (const c of moving) {
+              const o = origin.get(c.id)
+              c.x = Math.round((o.x + dx) / GRID) * GRID
+              c.y = Math.round((o.y + dy) / GRID) * GRID
+              const g = gridSize(c, o.w, o.h)
+              c.w = g.w
+              c.h = g.h
+              place(c)
+              if (c.type === 'shape') redrawShape(c)
+            }
+            const o = origin.get(card.id) ?? origin.get(moving[0].id)
+            const c = origin.has(card.id) ? card : moving[0]
+            dx = c.x - o.x
+            dy = c.y - o.y
+          } else {
+            const snapped = snapMove(box, dx, dy, new Set(moving.map((c) => c.id)), ev.altKey && !startAlt)
+            dx = snapped.dx
+            dy = snapped.dy
+            lines = snapped.lines
+            for (const c of moving) {
+              const o = origin.get(c.id)
+              c.x = Math.round(o.x + dx)
+              c.y = Math.round(o.y + dy)
+              // (a size made even by Ctrl a moment ago goes back when Ctrl is let go)
+              if (sizeOf(c).w !== o.w || sizeOf(c).h !== o.h) {
+                c.w = o.w
+                c.h = o.h
+                if (c.type === 'shape') redrawShape(c)
+              }
+              place(c)
+            }
           }
-          showGuides(snapped.lines)
+          for (const b of bends) b.l.pts = b.pts.map((p) => ({ x: Math.round(p.x + dx), y: Math.round(p.y + dy) }))
+          showGuides(lines)
           drawLinks()
           placeFloat()
           drawMini()
@@ -1147,6 +1565,12 @@ export default {
           canvas.classList.remove('moving')
           guides.replaceChildren()
           if (moved) commit()
+          else if (ctrlDown) {
+            const next = new Set(sel)
+            if (next.has(card.id)) next.delete(card.id)
+            else next.add(card.id)
+            setSel(next)
+          }
         }
         node.addEventListener('pointermove', move)
         node.addEventListener('pointerup', up)
@@ -1158,23 +1582,30 @@ export default {
         e.stopPropagation()
         setSel([card.id])
         const s0 = sizeOf(card)
+        const p0 = { x: card.x, y: card.y }
         const from = { x: e.clientX, y: e.clientY }
         const ratio = s0.w / s0.h
         const [mw, mh] = MIN[card.type]
         grip.setPointerCapture(e.pointerId)
         const move = (ev) => {
           const k = board.view.k
-          let w = clamp(s0.w + (ev.clientX - from.x) / k, mw, 1600)
-          let h = clamp(s0.h + (ev.clientY - from.y) / k, mh, 1600)
-          if (card.type === 'image' && !ev.altKey) h = w / ratio
-          if (board.settings.snapGrid && !ev.altKey) {
-            w = Math.round((card.x + w) / GRID) * GRID - card.x
-            h = card.type === 'image' ? w / ratio : Math.round((card.y + h) / GRID) * GRID - card.y
+          const ctrl = ev.ctrlKey || ev.metaKey
+          // Ctrl: the corner of the card goes onto the nearest dot too, and its edges onto the dots it is pulled to
+          card.x = ctrl ? Math.round(p0.x / GRID) * GRID : p0.x
+          card.y = ctrl ? Math.round(p0.y / GRID) * GRID : p0.y
+          const right = p0.x + s0.w + (ev.clientX - from.x) / k
+          const bottom = p0.y + s0.h + (ev.clientY - from.y) / k
+          let w = clamp(right - card.x, mw, 2400)
+          let h = clamp(bottom - card.y, mh, 2400)
+          if (card.type === 'image' && !ev.altKey && !ctrl) h = w / ratio
+          if (ctrl || (board.settings.snapGrid && !ev.altKey)) {
+            w = Math.max(Math.ceil(mw / GRID) * GRID, Math.round((card.x + w) / GRID) * GRID - card.x)
+            h = card.type === 'image' && !ctrl ? w / ratio : Math.max(Math.ceil(mh / GRID) * GRID, Math.round((card.y + h) / GRID) * GRID - card.y)
           }
           card.w = Math.round(Math.max(mw, w))
           card.h = Math.round(Math.max(mh, h))
           place(card)
-          if (card.type === 'shape') renderCard(card)
+          if (card.type === 'shape') redrawShape(card)
           drawLinks()
           placeFloat()
           drawMini()
@@ -1191,46 +1622,74 @@ export default {
       }
 
       /* ---------- drawing an arrow ---------- */
+      /** The card under a point of the screen, and the side of it the point is at (its dot, or the nearest side). */
       const cardAt = (cx, cy) => {
-        const hit = document.elementFromPoint(cx, cy)?.closest('.bd-card')
-        return hit ? byId(hit.dataset.id) : null
+        const hit = document.elementFromPoint(cx, cy)
+        const node = hit?.closest('.bd-card')
+        const card = node ? byId(node.dataset.id) : null
+        if (!card) return null
+        const port = hit.closest('.bd-port')
+        const side = port ? PORT_SIDE[[...port.classList].find((c) => c.startsWith('p-')).slice(2)] : sideNear(card, toWorld(cx, cy))
+        return { card, side }
       }
-      const tempTo = (from, p) => {
-        const c = centerOf(from)
-        const e = edgeToward(from, p.x, p.y)
-        temp.setAttribute('x1', e.x ?? c.x)
-        temp.setAttribute('y1', e.y ?? c.y)
+      /** The card an arrow is being drawn to shows its dots (and which side the arrow will come to). */
+      let targetNode = null
+      const markTarget = (found, side) => {
+        const node = found ? cardEls.get(found.id) : null
+        if (targetNode && targetNode !== node) targetNode.classList.remove('target', 's-top', 's-right', 's-bottom', 's-left')
+        targetNode = node
+        if (node) {
+          node.classList.remove('s-top', 's-right', 's-bottom', 's-left')
+          node.classList.add('target', 's-' + side)
+        }
+      }
+      const tempTo = (a, p) => {
+        temp.setAttribute('x1', a.x)
+        temp.setAttribute('y1', a.y)
         temp.setAttribute('x2', p.x)
         temp.setAttribute('y2', p.y)
         temp.setAttribute('visibility', 'visible')
       }
-      /** Let go of an arrow on a card: it joins them; on an empty place: a new card is made there and joined. */
-      const dropArrow = (from, cx, cy) => {
+      /** An arrow let go on an empty place: a new card there, fastened by the side that faces the arrow. */
+      const arrowToEmpty = (from, fromSide, p) => {
+        const toSide = OPPOSITE[fromSide]
+        const [w, h] = SIZE.text
+        // (the middle of the new card, so that the middle of its side is where the arrow was let go)
+        const [nx, ny] = NORMAL[fromSide]
+        const at = { x: p.x + (nx * w) / 2, y: p.y + (ny * h) / 2 }
+        const c = batch(() => {
+          const made = addCard({ type: 'text' }, at, false)
+          addLink(from.id, made.id, fromSide, toSide)
+          return made
+        })
+        fresh.add(c.id)
+        startEdit(c)
+      }
+      /** Let go of an arrow on a card: it joins them at the side it was let go at; on an empty place: a new card. */
+      const dropArrow = (from, fromSide, cx, cy) => {
         temp.setAttribute('visibility', 'hidden')
-        const target = cardAt(cx, cy)
-        if (target && target.id !== from.id) addLink(from.id, target.id)
-        else if (!target) {
-          const p = toWorld(cx, cy)
-          const c = batch(() => {
-            const made = addCard({ type: 'text' }, { x: p.x + 90, y: p.y }, false)
-            addLink(from.id, made.id)
-            return made
-          })
-          fresh.add(c.id)
-          startEdit(c)
-        }
+        markTarget(null)
+        const found = cardAt(cx, cy)
+        if (found && found.card.id !== from.id) addLink(from.id, found.card.id, fromSide, found.side)
+        else if (!found) arrowToEmpty(from, fromSide, toWorld(cx, cy))
       }
       const portDown = (e, card, port) => {
         if (e.button !== 0 || card.locked) return
         e.stopPropagation()
+        const side = PORT_SIDE[[...port.classList].find((c) => c.startsWith('p-')).slice(2)]
         port.setPointerCapture(e.pointerId)
-        const move = (ev) => tempTo(card, toWorld(ev.clientX, ev.clientY))
+        const move = (ev) => {
+          const found = cardAt(ev.clientX, ev.clientY)
+          const target = found && found.card.id !== card.id ? found : null
+          markTarget(target?.card, target?.side)
+          tempTo(anchorOf(card, side), target ? anchorOf(target.card, target.side) : toWorld(ev.clientX, ev.clientY))
+        }
         move(e)
         const up = (ev) => {
           port.removeEventListener('pointermove', move)
           port.removeEventListener('pointerup', up)
           port.removeEventListener('pointercancel', up)
-          dropArrow(card, ev.clientX, ev.clientY)
+          dropArrow(card, side, ev.clientX, ev.clientY)
         }
         port.addEventListener('pointermove', move)
         port.addEventListener('pointerup', up)
@@ -1241,19 +1700,154 @@ export default {
         arrowMode = { from: card }
         canvas.classList.add('arrowing')
         placeFloat()
-        tempTo(card, centerOf(card))
+        tempTo(anchorOf(card, 'right'), anchorOf(card, 'right'))
         api.ui.notice(tt('Щёлкните по карточке, куда ведёт стрелка (Esc — отмена)', 'Click the card the arrow goes to (Esc cancels)'), 3500)
       }
       const stopArrowMode = () => {
         arrowMode = null
         canvas.classList.remove('arrowing')
         temp.setAttribute('visibility', 'hidden')
+        markTarget(null)
         placeFloat()
       }
       const finishArrowMode = (card) => {
         const from = arrowMode?.from
         stopArrowMode()
         if (from && card && from.id !== card.id) addLink(from.id, card.id)
+      }
+      /** In the arrow mode the line follows the mouse from the side of the card that faces it. */
+      const arrowModeTo = (p) => {
+        const from = arrowMode.from
+        tempTo(anchorOf(from, sideNear(from, p)), p)
+      }
+
+      /* ---------- bend points and the ends of an arrow ---------- */
+      let clickBend = null
+      /**
+       * The line of an arrow pressed: it is chosen; dragged, a bend point is made where it was taken and follows the
+       * mouse (Ctrl: on the dots of the grid). A click on an arrow already chosen makes a bend point there too.
+       */
+      const linkDown = (e, l) => {
+        const wasOn = selLink === l.id && !sel.size
+        setSel([], l.id)
+        const start = { x: e.clientX, y: e.clientY }
+        const at = toWorld(e.clientX, e.clientY)
+        let i = -1
+        // (the mouse is caught only once it moves: a double click must still reach the line, for the label)
+        const move = (ev) => {
+          if (i < 0) {
+            if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return
+            canvas.setPointerCapture(e.pointerId)
+            i = bendIndex(l, at)
+            l.pts = [...(l.pts ?? [])]
+            l.pts.splice(i, 0, snapPt(at, false))
+          }
+          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          drawLinks()
+          placeFloat()
+        }
+        const up = () => {
+          canvas.removeEventListener('pointermove', move)
+          canvas.removeEventListener('pointerup', up)
+          canvas.removeEventListener('pointercancel', up)
+          if (i >= 0) commit()
+          else if (wasOn) {
+            // (a moment later: the second click of a double click edits the label instead)
+            clearTimeout(clickBend)
+            clickBend = setTimeout(() => {
+              clickBend = null
+              if (!board.links.includes(l)) return
+              const j = bendIndex(l, at)
+              l.pts = [...(l.pts ?? [])]
+              l.pts.splice(j, 0, snapPt(at, e.ctrlKey || e.metaKey))
+              drawLinks()
+              placeFloat()
+              commit()
+            }, 280)
+          }
+        }
+        canvas.addEventListener('pointermove', move)
+        canvas.addEventListener('pointerup', up)
+        canvas.addEventListener('pointercancel', up)
+      }
+      /** A bend point dragged (Ctrl: on the dots of the grid). */
+      const bendDown = (e, l, i) => {
+        let moved = false
+        const move = (ev) => {
+          if (!moved) {
+            if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return
+            // (caught once it moves: a double click on the point still reaches it, and takes it away)
+            canvas.setPointerCapture(e.pointerId)
+          }
+          moved = true
+          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          drawLinks()
+          placeFloat()
+        }
+        const up = () => {
+          canvas.removeEventListener('pointermove', move)
+          canvas.removeEventListener('pointerup', up)
+          canvas.removeEventListener('pointercancel', up)
+          if (moved) commit()
+        }
+        canvas.addEventListener('pointermove', move)
+        canvas.addEventListener('pointerup', up)
+        canvas.addEventListener('pointercancel', up)
+      }
+      const removeBend = (l, i) => {
+        if (!l.pts?.[i]) return
+        l.pts = l.pts.filter((_, j) => j !== i)
+        if (!l.pts.length) delete l.pts
+        drawLinks()
+        placeFloat()
+        commit()
+      }
+      const clearBends = (l) => {
+        delete l.pts
+        drawLinks()
+        placeFloat()
+        commit()
+      }
+      /** An end of an arrow dragged to another side of its card, or to another card. */
+      const endDown = (e, l, end) => {
+        const other = end === 'from' ? byId(l.to) : byId(l.from)
+        const otherSide = end === 'from' ? l.toSide : l.fromSide
+        const fixed = anchorOf(other, otherSide)
+        let moved = false
+        const move = (ev) => {
+          if (!moved) {
+            if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return
+            canvas.setPointerCapture(e.pointerId)
+          }
+          moved = true
+          const found = cardAt(ev.clientX, ev.clientY)
+          const target = found && found.card.id !== other.id ? found : null
+          markTarget(target?.card, target?.side)
+          tempTo(fixed, target ? anchorOf(target.card, target.side) : toWorld(ev.clientX, ev.clientY))
+        }
+        const up = (ev) => {
+          canvas.removeEventListener('pointermove', move)
+          canvas.removeEventListener('pointerup', up)
+          canvas.removeEventListener('pointercancel', up)
+          temp.setAttribute('visibility', 'hidden')
+          markTarget(null)
+          if (!moved) return
+          const found = cardAt(ev.clientX, ev.clientY)
+          if (!found || found.card.id === other.id) return
+          const from = end === 'from' ? found.card.id : l.from
+          const to = end === 'to' ? found.card.id : l.to
+          if (board.links.some((x) => x !== l && x.from === from && x.to === to)) return
+          l.from = from
+          l.to = to
+          if (end === 'from') l.fromSide = found.side
+          else l.toSide = found.side
+          drawLinks()
+          placeFloat()
+          commit()
+        }
+        canvas.addEventListener('pointermove', move)
+        canvas.addEventListener('pointerup', up)
+        canvas.addEventListener('pointercancel', up)
       }
 
       /* ---------- arranging ---------- */
@@ -1529,18 +2123,11 @@ export default {
         { label: tt('Стикер', 'Sticky note'), hint: 'S', action: () => addCard({ type: 'sticky', color: STICKY }, at) },
         { label: tt('Чек-лист', 'Check list'), action: () => addCard({ type: 'todo', text: '[ ] ' }, at) },
         { label: tt('Заметка из хранилища…', 'Note from the vault…'), action: () => pickNote(at) },
-        { label: tt('Картинка…', 'Picture…'), action: () => pickImages(at) },
+        { label: tt('Картинка или файл…', 'Picture or file…'), action: () => pickFile(at) },
         { label: tt('Ссылка…', 'Link…'), action: () => void askLink(at) },
         { sep: true },
         { label: tt('Рамка', 'Frame'), hint: 'F', action: () => addCard({ type: 'frame', text: '' }, at) },
-        {
-          label: tt('Фигура', 'Shape'),
-          children: [
-            { label: tt('Прямоугольник', 'Rectangle'), action: () => addCard({ type: 'shape', shape: 'rect' }, at) },
-            { label: tt('Эллипс', 'Ellipse'), action: () => addCard({ type: 'shape', shape: 'ellipse' }, at) },
-            { label: tt('Ромб', 'Diamond'), action: () => addCard({ type: 'shape', shape: 'diamond' }, at) }
-          ]
-        }
+        { label: tt('Фигура', 'Shape'), children: SHAPES.map((s) => ({ label: tt(s.ru, s.en), action: () => addCard({ type: 'shape', shape: s.id }, at) })) }
       ]
 
       const fontMenu = (cards) => [
@@ -1629,6 +2216,10 @@ export default {
               img.src = urlOf(card.src)
             }
           })
+        } else if (card.type === 'file') {
+          items.push({ label: tt('Открыть файл', 'Open the file'), hint: tt('двойной клик', 'double click'), action: () => openAny(card.src) })
+          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.src) })
+          items.push({ label: tt('Скопировать имя', 'Copy the name'), action: () => void copyText(card.src.split('/').pop()) })
         } else if (card.type === 'frame') {
           items.push({ label: tt('Название…', 'Name…'), hint: tt('двойной клик', 'double click'), action: () => startEdit(card, 'all') })
           items.push({ label: tt('Подогнать под содержимое', 'Fit to the contents'), disabled: !membersOf(card).length, action: () => fitFrame(card) })
@@ -1644,11 +2235,7 @@ export default {
         if (card.type === 'shape') {
           items.push({
             label: tt('Форма', 'Shape'),
-            children: ['rect', 'ellipse', 'diamond'].map((s) => ({
-              label: { rect: tt('Прямоугольник', 'Rectangle'), ellipse: tt('Эллипс', 'Ellipse'), diamond: tt('Ромб', 'Diamond') }[s],
-              checked: (card.shape ?? 'rect') === s,
-              action: () => setProp(one, 'shape', s)
-            }))
+            children: SHAPES.map((s) => ({ label: tt(s.ru, s.en), checked: (card.shape ?? 'rect') === s.id, action: () => setProp(one, 'shape', s.id) }))
           })
         }
         items.push({ sep: true })
@@ -1663,6 +2250,7 @@ export default {
         items.push({ label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() })
         items.push({ label: tt('Порядок', 'Order'), children: orderMenu(one) })
         items.push({ label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(one) })
+        items.push({ label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), disabled: card.locked, action: () => alignToGrid(one) })
         items.push({ label: card.locked ? tt('Открепить', 'Unlock') : tt('Закрепить', 'Lock'), action: () => toggleLock(one) })
         items.push({ sep: true })
         if (card.type === 'frame') {
@@ -1688,6 +2276,7 @@ export default {
           { label: tt('Порядок', 'Order'), children: orderMenu(cards) },
           { sep: true },
           { label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(cards) },
+          { label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), action: () => alignToGrid(cards) },
           { label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() },
           { label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() },
           { label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() },
@@ -1719,15 +2308,25 @@ export default {
         {
           label: tt('Форма', 'Shape'),
           children: [
-            { label: tt('Прямая', 'Straight'), checked: !l.curve, action: () => linkProp(l, 'curve', undefined) },
-            { label: tt('Изогнутая', 'Curved'), checked: !!l.curve, action: () => linkProp(l, 'curve', true) }
+            { label: tt('Прямая', 'Straight'), checked: !l.curve && !l.elbow, action: () => linkShape(l, null) },
+            { label: tt('Изогнутая', 'Curved'), checked: !!l.curve, action: () => linkShape(l, 'curve') },
+            { label: tt('Ломаная (под прямым углом)', 'Elbow (right angles)'), checked: !!l.elbow && !l.curve, action: () => linkShape(l, 'elbow') }
           ]
         },
+        { label: tt('Убрать точки изгиба', 'Remove the bend points'), disabled: !l.pts?.length, action: () => clearBends(l) },
         { label: tt('Цвет', 'Colour'), children: [{ colors: { current: l.color, pick: (c) => linkProp(l, 'color', c || undefined) } }] },
         { label: tt('Развернуть', 'Reverse'), action: () => reverseLink(l) },
         { sep: true },
         { label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() }
       ]
+      const linkShape = (l, kind) => {
+        delete l.curve
+        delete l.elbow
+        if (kind) l[kind] = true
+        drawLinks()
+        placeFloat()
+        commit()
+      }
       const linkProp = (l, key, value) => {
         if (value === undefined) delete l[key]
         else l[key] = value
@@ -1775,7 +2374,7 @@ export default {
       const toMarkdown = () => {
         const lines = [`# ${nameOf(path)}`, '']
         const label = (c) =>
-          c.type === 'note' ? `[[${nameOf(c.note)}]]` : c.type === 'link' ? `[${c.text || hostOf(c.url)}](${c.url})` : c.type === 'image' ? `![[${nameOf(c.src)}]]` : (c.text ?? '').replace(/\n+/g, ' ').trim() || '…'
+          c.type === 'note' ? `[[${nameOf(c.note)}]]` : c.type === 'link' ? `[${c.text || hostOf(c.url)}](${c.url})` : c.type === 'image' ? `![[${nameOf(c.src)}]]` : c.type === 'file' ? `[[${c.src.split('/').pop()}]]` : (c.text ?? '').replace(/\n+/g, ' ').trim() || '…'
         const frames = board.cards.filter((c) => c.type === 'frame')
         const inFrame = new Set()
         for (const f of frames) {
@@ -1834,55 +2433,29 @@ export default {
         listed = key
         select.replaceChildren(...paths.map((p) => el('option', { value: p, textContent: nameOf(p) })))
         if (path && paths.includes(path)) select.value = path
-        select.hidden = !paths.length
+        selectWrap.hidden = !paths.length
         return paths
       }
-      const createBoard = async (dir = FOLDER) => {
-        const raw = await api.ui.prompt(tt('Название доски', 'Name of the board'), '')
-        const name = raw?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
-        if (!name) return null
+      /**
+       * A new board, made at once under the default name ("Untitled", "Untitled 1"...) in this folder (the root of the
+       * vault by default), opened with its name ready to be typed over - or left as it is.
+       */
+      const createBoard = async (dir = '') => {
         if (dir && !(await api.vault.exists(dir))) await files.folder(dir)
-        const taken = new Set(boardPaths().map((p) => p.toLowerCase()))
-        const at = dir ? dir + '/' : ''
-        let next = `${at}${name}.${EXT}`
-        for (let i = 2; taken.has(next.toLowerCase()); i++) next = `${at}${name} ${i}.${EXT}`
+        const next = freeBoardPath(defaultName(), dir)
         await api.vault.write(next, serialize(nameOf(next), newBoard()), true)
+        await new Promise((r) => setTimeout(r, 200))
         fillSelect()
         await openPath(next)
+        fillSelect()
         select.value = next
+        editTitle()
         return next
       }
       const boardMenu = () => [
-        { label: tt('Новая доска…', 'New board…'), action: () => void createBoard() },
+        { label: tt('Новая доска', 'New board'), action: () => void createBoard() },
         { sep: true },
-        {
-          label: tt('Переименовать…', 'Rename…'),
-          disabled: !path,
-          action: async () => {
-            const v = await api.ui.prompt(tt('Новое название', 'New name'), nameOf(path))
-            const name = v?.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim()
-            if (!name || name === nameOf(path)) return
-            await write()
-            try {
-              const was = path
-              const next = await files.rename(path, name)
-              path = next
-              const d = data()
-              const views = { ...(d.views ?? {}) }
-              if (views[was]) views[next] = views[was]
-              delete views[was]
-              api.data.set({ ...d, last: next, views })
-              // the title line of the note says the new name
-              dirty = true
-              await write()
-              await new Promise((r) => setTimeout(r, 300))
-              fillSelect()
-              select.value = next
-            } catch (e) {
-              api.ui.notice(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e), 6000)
-            }
-          }
-        },
+        { label: tt('Переименовать', 'Rename'), action: () => editTitle() },
         {
           label: tt('Дублировать доску', 'Duplicate the board'),
           disabled: !path,
@@ -1924,8 +2497,69 @@ export default {
         }
       ]
 
+      /** A card of a file of the vault: a note with its preview, a picture as it is, any other file as a card of it. */
+      const addPath = async (p, at, snap = false) => {
+        if (/\.md$/i.test(p)) return addCard({ type: 'note', note: p }, at, false, snap)
+        if (IMAGE.test(p)) {
+          const dims = await new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+            img.onerror = () => resolve({ w: 264, h: 180 })
+            img.src = urlOf(p)
+          })
+          // (a tiny picture is shown big enough to be seen and taken)
+          const w = clamp(dims.w || 264, 96, 336)
+          return addCard({ type: 'image', src: p, w, h: clamp(Math.round((w * (dims.h || 180)) / (dims.w || 264)), 48, 1200) }, at, false, snap)
+        }
+        return addCard({ type: 'file', src: p }, at, false, snap)
+      }
+      /** "Picture or file": a file of the vault (pictures first), or one from the computer. */
+      const pickFile = (at, snap = false) => {
+        const p = at ? toScreen(at.x, at.y) : (() => { const r = canvas.getBoundingClientRect(); return { x: r.left + r.width / 2 - 130, y: r.top + 90 } })()
+        api.ui.popup({
+          x: p.x,
+          y: p.y,
+          mount: (box, close) => {
+            const input = el('input', { className: 'bd-find', placeholder: tt('Найти картинку или файл…', 'Find a picture or a file…'), spellcheck: false })
+            const list = el('div', { className: 'bd-found' })
+            const all = api.vault
+              .listFiles()
+              .filter((f) => !/\.(md|board)$/i.test(f))
+              .sort((a, b) => (IMAGE.test(b) ? 1 : 0) - (IMAGE.test(a) ? 1 : 0) || a.localeCompare(b, undefined, { numeric: true }))
+            const render = () => {
+              const q = input.value.trim().toLowerCase()
+              const found = all.filter((n) => !q || n.toLowerCase().includes(q)).slice(0, 40)
+              const disk = el('button', { className: 'bd-found-row bd-found-disk', textContent: tt('Картинка с компьютера…', 'A picture from the computer…') })
+              disk.onclick = () => {
+                close()
+                pickImages(at)
+              }
+              list.replaceChildren(
+                ...found.map((n) => {
+                  const b = el('button', { className: 'bd-found-row', textContent: n, title: n })
+                  b.onclick = () => {
+                    close()
+                    void addPath(n, at, snap)
+                  }
+                  return b
+                }),
+                ...(found.length ? [] : [el('div', { className: 'bd-found-none', textContent: tt('В хранилище ничего не найдено', 'Nothing found in the vault') })]),
+                disk
+              )
+            }
+            input.oninput = render
+            input.onkeydown = (e) => {
+              if (e.key === 'Enter') list.firstChild?.click?.()
+            }
+            box.append(input, list)
+            render()
+            requestAnimationFrame(() => input.focus())
+          }
+        })
+      }
+
       /* ---------- picking a note ---------- */
-      const pickNote = (at) => {
+      const pickNote = (at, snap = false) => {
         const p = at ? toScreen(at.x, at.y) : (() => { const r = canvas.getBoundingClientRect(); return { x: r.left + r.width / 2 - 130, y: r.top + 90 } })()
         api.ui.popup({
           x: p.x,
@@ -1945,7 +2579,7 @@ export default {
                       const b = el('button', { className: 'bd-found-row', textContent: n.replace(/\.md$/i, '') })
                       b.onclick = () => {
                         close()
-                        addCard({ type: 'note', note: n }, at, false)
+                        addCard({ type: 'note', note: n }, at, false, snap)
                       }
                       return b
                     })
@@ -1973,11 +2607,11 @@ export default {
         if (!board) return
         mouseInside = true
         mouse = toWorld(e.clientX, e.clientY)
-        if (arrowMode) tempTo(arrowMode.from, mouse)
+        if (arrowMode) arrowModeTo(mouse)
       })
 
       canvas.addEventListener('pointerdown', (e) => {
-        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search')) return
+        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock')) return
         canvas.focus()
         if (arrowMode) {
           // a click on a card is handled by the card; here it was an empty place
@@ -1985,19 +2619,24 @@ export default {
           const from = arrowMode.from
           stopArrowMode()
           const p = toWorld(e.clientX, e.clientY)
-          const c = batch(() => {
-            const made = addCard({ type: 'text' }, { x: p.x + 90, y: p.y }, false)
-            addLink(from.id, made.id)
-            return made
-          })
-          fresh.add(c.id)
-          startEdit(c)
+          arrowToEmpty(from, sideNear(from, p), p)
+          return
+        }
+        const handle = e.target.closest('.bd-wp, .bd-end')
+        if (handle && e.button === 0 && !broken) {
+          e.stopPropagation()
+          const l = board.links.find((x) => x.id === handle.dataset.link)
+          if (!l) return
+          if (handle.classList.contains('bd-wp')) bendDown(e, l, Number(handle.dataset.i))
+          else endDown(e, l, handle.dataset.end)
           return
         }
         const onLink = e.target.closest('.bd-link')
         if (onLink && e.button === 0) {
           e.stopPropagation()
-          setSel([], onLink.dataset.id)
+          const l = board.links.find((x) => x.id === onLink.dataset.id)
+          if (l && !broken && !spaceDown && tool !== 'hand') linkDown(e, l)
+          else setSel([], onLink.dataset.id)
           return
         }
         const pan = e.button === 1 || (e.button === 0 && (spaceDown || tool === 'hand'))
@@ -2077,14 +2716,24 @@ export default {
       )
 
       canvas.addEventListener('dblclick', (e) => {
-        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search')) return
+        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock')) return
+        // a double click on a bend point takes it away
+        const wp = e.target.closest('.bd-wp')
+        if (wp) {
+          const link = board.links.find((x) => x.id === wp.dataset.link)
+          if (link) removeBend(link, Number(wp.dataset.i))
+          return
+        }
         const l = e.target.closest('.bd-link')
         if (l) {
+          clearTimeout(clickBend)
+          clickBend = null
           const link = board.links.find((x) => x.id === l.dataset.id)
           if (link) void editLabel(link)
           return
         }
-        addCard({ type: 'text' }, toWorld(e.clientX, e.clientY))
+        if (e.target.closest('.bd-end')) return
+        addCard({ type: 'text' }, toWorld(e.clientX, e.clientY), true, e.ctrlKey || e.metaKey)
       })
 
       canvas.addEventListener('contextmenu', (e) => {
@@ -2139,17 +2788,10 @@ export default {
           e.preventDefault()
           e.stopPropagation()
           const at = toWorld(e.clientX, e.clientY)
-          if (/\.md$/i.test(fromTree)) addCard({ type: 'note', note: fromTree }, at, false)
-          else if (/\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(fromTree)) {
-            const dims = await new Promise((resolve) => {
-              const img = new Image()
-              img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-              img.onerror = () => resolve({ w: 260, h: 180 })
-              img.src = urlOf(fromTree)
-            })
-            const w = Math.min(340, dims.w || 260)
-            addCard({ type: 'image', src: fromTree, w, h: Math.round((w * (dims.h || 180)) / (dims.w || 260)) }, at, false)
-          } else api.ui.notice(tt('На доску можно положить заметку или картинку', 'A note or a picture can be put on the board'))
+          // (a folder is no card; this board itself neither)
+          if (!api.vault.listFiles().includes(fromTree)) api.ui.notice(tt('На доску можно положить файл, но не папку', 'A file can be put on the board, not a folder'))
+          else if (fromTree === path) api.ui.notice(tt('Доску нельзя положить на неё саму', 'A board cannot be put on itself'))
+          else await addPath(fromTree, at, e.ctrlKey || e.metaKey)
           return
         }
         const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'))
@@ -2279,9 +2921,11 @@ export default {
         hint.textContent = broken
           ? tt('Данные доски повреждены, доска не изменяется: исправьте её файл .board или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its .board file or make a new board.')
           : tt(
-              'Двойной клик по пустому месту — новая карточка. Правая кнопка мыши — меню. Колесо — масштаб, пробел или средняя кнопка — двигать поле. Кружок у края карточки тянется к другой карточке — так появляется стрелка. Заметки и картинки можно перетащить сюда из дерева.',
-              'Double click an empty place for a new card. Right click for the menu. The wheel zooms; Space or the middle button moves the field. Drag the dot at the edge of a card to another card to make an arrow. Notes and pictures can be dragged here from the tree.'
+              'Перетащите блок с панели снизу или дважды щёлкните по полю\nКолесо — масштаб, пробел + перетаскивание — двигать поле\nCtrl при перетаскивании — по точкам сетки\nФайлы и заметки можно перетащить сюда из дерева',
+              'Drag a block from the panel below or double click the field\nThe wheel zooms, Space + drag moves the field\nCtrl while dragging puts blocks on the dots of the grid\nFiles and notes can be dragged here from the tree'
             )
+        hint.classList.toggle('bad', broken)
+        dock.hidden = broken
         canvas.classList.toggle('readonly', broken)
         syncToolbar()
       }
@@ -2290,19 +2934,12 @@ export default {
         if (editing) root.querySelector('.bd-edit')?.blur()
         await write()
         path = next
+        draftName = ''
+        showTitle()
         if (!path) {
-          board = null
-          cardEls.clear()
-          frameLayer.replaceChildren()
-          cardLayer.replaceChildren()
-          linkLayer.replaceChildren()
-          floatBar.hidden = true
-          hint.hidden = false
-          // (the way to make one is right here, not only in the menu "…")
-          const make = el('button', { className: 'btn bd-first', textContent: tt('Создать доску', 'Make a board') })
-          make.onclick = () => void createBoard()
-          hint.replaceChildren(tt('Доска — это поле с карточками и стрелками. ', 'A board is a field with cards and arrows. '), make)
-          syncToolbar()
+          // no board yet: an empty one is shown at once, and gets its file when something is put on it
+          show(null)
+          if (pendingNotes.length && controller) controller.addNotes(pendingNotes.splice(0))
           return
         }
         api.data.set({ ...data(), last: path })
@@ -2315,6 +2952,188 @@ export default {
         }
         if (pendingNotes.length && controller) controller.addNotes(pendingNotes.splice(0))
       }
+
+      /* ---------- the dock at the bottom: what can be put on the board, dragged from it (or clicked) ---------- */
+      const shapeIcon = (id) => {
+        const [w, h] = id === 'circle' ? [18, 18] : id === 'diamond' ? [24, 18] : [26, 17]
+        const svg = svgEl('svg', { class: 'bd-dock-shape', viewBox: `-1 -1 ${w + 2} ${h + 2}`, width: w + 2, height: h + 2 })
+        const p = shapePath(id, w, h)
+        svg.append(svgEl('path', { d: p.d }))
+        if (p.extra) svg.append(svgEl('path', { d: p.extra }))
+        return svg
+      }
+      const DOCK = [
+        { id: 'text', ico: 'card', label: tt('Карточка', 'Card'), props: { type: 'text' } },
+        { id: 'sticky', ico: 'sticky', label: tt('Стикер', 'Sticky note'), props: { type: 'sticky', color: STICKY } },
+        { id: 'todo', ico: 'todo', label: tt('Чек-лист', 'Check list'), props: { type: 'todo', text: '[ ] ' } },
+        { id: 'note', ico: 'note', label: tt('Заметка из хранилища', 'Note from the vault'), pick: 'note' },
+        { id: 'media', ico: 'media', label: tt('Картинка или файл', 'Picture or file'), pick: 'file' },
+        { id: 'frame', ico: 'frame', label: tt('Рамка', 'Frame'), props: { type: 'frame', text: '' } },
+        null,
+        ...SHAPES.map((s) => ({ id: 'shape-' + s.id, shape: s.id, label: tt(s.ru, s.en), props: { type: 'shape', shape: s.id } }))
+      ]
+      /** What a thing of the dock makes, put with its middle at `at` (null: a free place in the view). */
+      const dropDock = (item, at, snap) => {
+        if (!board || broken) return
+        if (item.pick === 'note') pickNote(at, snap)
+        else if (item.pick === 'file') pickFile(at, snap)
+        else addCard({ ...item.props }, at, true, snap)
+      }
+      const dockDown = (e, item, b) => {
+        if (e.button !== 0 || !board || broken) return
+        e.preventDefault()
+        e.stopPropagation()
+        b.setPointerCapture(e.pointerId)
+        const [w, h] = item.props ? sizeFor(item.props) : item.pick === 'note' ? SIZE.note : SIZE.file
+        let dragging = false
+        const over = (ev) => {
+          const r = canvas.getBoundingClientRect()
+          const d = dock.getBoundingClientRect()
+          const inDock = ev.clientX >= d.left && ev.clientX <= d.right && ev.clientY >= d.top && ev.clientY <= d.bottom
+          return ev.clientX > r.left && ev.clientX < r.right && ev.clientY > r.top && ev.clientY < r.bottom && !inDock
+        }
+        const move = (ev) => {
+          if (!dragging) {
+            if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return
+            dragging = true
+            ghost.replaceChildren()
+            ghost.className = 'bd-ghost' + (item.shape ? ' is-shape' : '') + (item.id === 'sticky' ? ' is-sticky' : '')
+            if (item.shape) ghost.append(shapeSvg({ type: 'shape', shape: item.shape, w, h }))
+            else ghost.append(el('span', { textContent: item.label }))
+            ghost.hidden = false
+            canvas.classList.add('placing')
+          }
+          const r = canvas.getBoundingClientRect()
+          const k = board.view.k
+          let p = toWorld(ev.clientX, ev.clientY)
+          if (ev.ctrlKey || ev.metaKey) {
+            // (on the dots: where the card will be put)
+            const c = snapPt({ x: p.x - w / 2, y: p.y - h / 2 }, true)
+            p = { x: c.x + w / 2, y: c.y + h / 2 }
+          }
+          const s = toScreen(p.x - w / 2, p.y - h / 2)
+          Object.assign(ghost.style, { left: s.x - r.left + 'px', top: s.y - r.top + 'px', width: w * k + 'px', height: h * k + 'px' })
+          ghost.classList.toggle('away', !over(ev))
+        }
+        const up = (ev) => {
+          b.removeEventListener('pointermove', move)
+          b.removeEventListener('pointerup', up)
+          b.removeEventListener('pointercancel', up)
+          ghost.hidden = true
+          canvas.classList.remove('placing')
+          if (ev.type === 'pointercancel') return
+          if (!dragging) dropDock(item, null, false)
+          else if (over(ev)) dropDock(item, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+        }
+        b.addEventListener('pointermove', move)
+        b.addEventListener('pointerup', up)
+        b.addEventListener('pointercancel', up)
+      }
+      for (const item of DOCK) {
+        if (!item) {
+          dock.append(el('span', { className: 'bd-dock-sep' }))
+          continue
+        }
+        const b = el('button', { className: 'bd-dock-btn', title: item.label + tt(' — перетащите на доску или щёлкните', ' — drag it onto the board or click') })
+        b.dataset.kind = item.id
+        b.append(item.shape ? shapeIcon(item.shape) : icon(item.ico))
+        b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
+        dock.append(b)
+      }
+      // (a wheel over the dock scrolls it sideways when it does not fit, never zooms the board)
+      dock.addEventListener('wheel', (e) => {
+        e.stopPropagation()
+        if (dock.scrollWidth > dock.clientWidth) {
+          e.preventDefault()
+          dock.scrollLeft += e.deltaY || e.deltaX
+        }
+      })
+
+      /* ---------- the title: the name of the board, edited in place ---------- */
+      const title = el('input', { className: 'bd-title', spellcheck: false, title: tt('Название доски (щёлкните, чтобы переименовать)', 'Name of the board (click to rename)') })
+      const defaultName = () => tt('Без названия', 'Untitled')
+      let draftName = ''
+      const showTitle = () => {
+        title.value = path ? nameOf(path) : draftName || defaultName()
+        title.dataset.path = path
+      }
+      const cleanName = (raw) => (raw ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').trim().replace(/[. ]+$/, '')
+      /** A free path for a board of this name in this folder: "Name", then "Name 1", "Name 2"... */
+      const freeBoardPath = (name, dir = '') => {
+        const taken = new Set(api.vault.listFiles().map((p) => p.toLowerCase()))
+        const at = dir ? dir + '/' : ''
+        let next = `${at}${name}.${EXT}`
+        for (let i = 1; taken.has(next.toLowerCase()); i++) next = `${at}${name} ${i}.${EXT}`
+        return next
+      }
+      const renameTo = async (raw) => {
+        const name = cleanName(raw)
+        if (!path) {
+          // (a board not written yet takes the name when it is)
+          if (name) draftName = name
+          showTitle()
+          return
+        }
+        if (!name || name === nameOf(path)) {
+          showTitle()
+          return
+        }
+        await write()
+        try {
+          const was = path
+          const next = await files.rename(path, name)
+          path = next
+          const d = data()
+          const views = { ...(d.views ?? {}) }
+          if (views[was]) views[next] = views[was]
+          delete views[was]
+          api.data.set({ ...d, last: next, views })
+          await new Promise((r) => setTimeout(r, 300))
+          fillSelect()
+          select.value = next
+        } catch (e) {
+          api.ui.notice(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e), 6000)
+        }
+        showTitle()
+      }
+      title.addEventListener('keydown', (e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          title.blur()
+        } else if (e.key === 'Escape') {
+          showTitle()
+          title.blur()
+        }
+      })
+      title.addEventListener('focus', () => title.select())
+      title.addEventListener('blur', () => void renameTo(title.value))
+      const editTitle = () => {
+        title.focus()
+        title.select()
+      }
+      /** The board shown but not written yet gets its file (under its name) the moment something is put on it. */
+      let creating = null
+      const materialize = () =>
+        (creating ??= (async () => {
+          try {
+            const next = freeBoardPath(draftName || defaultName())
+            const text = serialize(nameOf(next), board)
+            lastWritten = text
+            written.push(text)
+            await api.vault.write(next, text, true)
+            path = next
+            draftName = ''
+            const d = data()
+            api.data.set({ ...d, last: next, views: { ...(d.views ?? {}), [next]: { ...board.view } } })
+            showTitle()
+            setTimeout(() => fillSelect(), 300)
+          } catch (e) {
+            api.ui.notice(e instanceof Error ? e.message : String(e), 6000)
+          } finally {
+            creating = null
+          }
+        })())
 
       /* ---------- the toolbar ---------- */
       const undoBtn = btn('undo', undo, tt('Отменить (Ctrl+Z)', 'Undo (Ctrl+Z)'), 'bd-icon')
@@ -2329,13 +3148,15 @@ export default {
         redoBtn.disabled = hist.i >= hist.stack.length - 1
         handBtn.classList.toggle('on', tool === 'hand')
         for (const b of [addBtn, viewBtn, findBtn, handBtn]) b.disabled = !board || broken
+        title.disabled = !board
       }
       select.onchange = () => void openPath(select.value)
       select.addEventListener('contextmenu', (e) => {
         e.preventDefault()
         showMenu(e.clientX, e.clientY, boardMenu())
       })
-      toolbar.append(select, moreBtn, el('span', { className: 'bd-sep' }), addBtn, handBtn, undoBtn, redoBtn, el('span', { className: 'bd-grow' }), findBtn, viewBtn)
+      select.title = tt('Другие доски', 'Other boards')
+      toolbar.append(title, selectWrap, moreBtn, el('span', { className: 'bd-sep' }), addBtn, handBtn, undoBtn, redoBtn, el('span', { className: 'bd-grow' }), findBtn, viewBtn)
 
       /* ---------- the controller the rest of the add-on talks to ---------- */
       let knownNotes = api.vault.list().join('\n')
@@ -2389,6 +3210,7 @@ export default {
           }
           const next = to + was.slice(from.length)
           path = next
+          if (document.activeElement !== title) showTitle()
           const d = data()
           const views = { ...(d.views ?? {}) }
           if (views[was]) views[next] = views[was]
@@ -2432,6 +3254,19 @@ export default {
     /* ====================================================================== the rest */
 
     api.commands.add({ id: 'open', name: { ru: 'Открыть доски', en: 'Open boards' }, keys: 'Ctrl+Alt+B', run: openBoards })
+    api.commands.add({
+      id: 'new',
+      name: { ru: 'Новая доска', en: 'New board' },
+      run: () => {
+        if (controller) {
+          openBoards()
+          controller.create('')
+        } else {
+          openBoards()
+          setTimeout(() => controller?.create(''), 400)
+        }
+      }
+    })
     api.rail.add({
       id: 'open',
       title: { ru: 'Доски', en: 'Boards' },
@@ -2444,7 +3279,7 @@ export default {
       isFolder
         ? [
             {
-              label: { ru: 'Новая доска здесь…', en: 'New board here…' },
+              label: { ru: 'Новая доска здесь', en: 'New board here' },
               action: () => {
                 if (controller) controller.create(path)
                 else {
@@ -2491,7 +3326,15 @@ export default {
       .bd-btn.bd-icon { padding: 0; width: 32px; font-size: 15px; }
       .bd-btn.on { background: var(--accent); color: var(--bg-app); }
       .bd-btn:disabled { opacity: .4; pointer-events: none; }
-      .bd-select { height: 30px; min-width: 140px; max-width: 240px; }
+      .bd-title { height: 30px; min-width: 120px; max-width: 280px; width: 22ch; box-sizing: border-box; padding: 0 8px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--text); font: inherit; font-size: 14px; font-weight: 500; outline: none; text-overflow: ellipsis; }
+      .bd-title:hover { background: var(--bg-hover); }
+      .bd-title:focus { border-color: var(--accent); background: var(--bg-app); }
+      /* (the list of boards: a narrow button with its arrow; the name is in the title before it) */
+      .bd-boards { position: relative; flex: none; width: 28px; height: 30px; margin-left: -6px; border-radius: 7px; color: var(--text-3); display: flex; align-items: center; justify-content: center; }
+      .bd-boards:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-boards .bd-ico { width: 14px; height: 14px; }
+      .bd-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+      .bd-select option { color: var(--text); background: var(--float-bg); }
       .bd-sep { width: 1px; height: 18px; background: var(--border); }
       .bd-grow { flex: 1; }
       .bd-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; cursor: default; touch-action: none; user-select: none; }
@@ -2532,11 +3375,25 @@ export default {
       .t-shape { background: transparent; border: 0; box-shadow: none; padding: 0; }
       .t-shape .bd-body { position: relative; overflow: visible; }
       .bd-shape-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-      .bd-shape-fill { fill: color-mix(in srgb, var(--c, transparent) 22%, var(--float-bg)); stroke: var(--c, var(--text-3)); stroke-width: 2; }
+      .bd-shape-fill { fill: color-mix(in srgb, var(--c, transparent) 22%, var(--float-bg)); stroke: var(--c, var(--text-3)); stroke-width: 2; stroke-linejoin: round; }
+      .bd-shape-line { fill: none; stroke: var(--c, var(--text-3)); stroke-width: 2; }
       .t-shape:not(.colored) .bd-shape-fill { fill: var(--float-bg); stroke: var(--text-3); }
-      .t-shape.on .bd-shape-fill { stroke: var(--accent); }
-      .bd-shape-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px 16px; }
-      .t-shape .bd-edit { text-align: center; }
+      .t-shape:not(.colored) .bd-shape-line { stroke: var(--text-3); }
+      .t-shape.on .bd-shape-fill, .t-shape.on .bd-shape-line { stroke: var(--accent); }
+      /* (a shape is shown by its own outline, chosen or not: no box around it) */
+      .bd-card.t-shape.on { box-shadow: none; }
+      .t-shape .bd-shape-svg { filter: drop-shadow(0 2px 6px rgb(0 0 0 / .18)); }
+      .bd-shape-text { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden; }
+      .bd-shape-text .bd-text { max-height: 100%; overflow: hidden; }
+      .t-shape .bd-edit { text-align: center; height: auto; overflow: hidden; }
+      .t-file { padding: 0 12px; }
+      .bd-file { display: flex; align-items: center; gap: 10px; height: 100%; }
+      .bd-file .bd-file-ico { width: 26px; height: 26px; margin: 0; color: var(--text-3); }
+      .bd-file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+      .bd-file-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bd-file-name.gone { color: var(--text-3); text-decoration: line-through; }
+      .bd-file-path { color: var(--text-3); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bd-file-ext { flex: none; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 5px; }
       .t-note .bd-body { display: flex; flex-direction: column; gap: 6px; }
       .bd-note-head { display: flex; align-items: center; gap: 8px; }
       .bd-note-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 500; }
@@ -2561,7 +3418,31 @@ export default {
       .bd-port { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; }
       .bd-port.p-r { right: -8px; top: 50%; margin-top: -7px; } .bd-port.p-l { left: -8px; top: 50%; margin-top: -7px; }
       .bd-port.p-t { top: -8px; left: 50%; margin-left: -7px; } .bd-port.p-b { bottom: -8px; left: 50%; margin-left: -7px; }
-      .bd-card:hover .bd-port, .bd-card.on .bd-port { opacity: 1; }
+      .bd-card:hover .bd-port, .bd-card.on .bd-port, .bd-card.target .bd-port { opacity: 1; }
+      .bd-card.target .bd-port { background: var(--text-3); }
+      .bd-card.target.s-top .p-t, .bd-card.target.s-right .p-r, .bd-card.target.s-bottom .p-b, .bd-card.target.s-left .p-l { background: var(--accent); transform: scale(1.35); }
+      .bd-handles { pointer-events: none; z-index: 4; }
+      .bd-wp, .bd-end { pointer-events: all; cursor: move; fill: var(--bg-app); stroke: var(--accent); }
+      .bd-end { fill: var(--accent); stroke: var(--bg-app); cursor: crosshair; }
+      .bd-line { stroke-linejoin: round; }
+      .bd-dock { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 2px; padding: 5px; max-width: calc(100% - 420px); overflow-x: auto; scrollbar-width: none;
+        border-radius: 11px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 20px rgb(0 0 0 / .3); }
+      .bd-dock::-webkit-scrollbar { display: none; }
+      .bd-dock-btn { flex: none; width: 36px; height: 36px; border-radius: 8px; color: var(--text-2); cursor: grab; display: flex; align-items: center; justify-content: center; touch-action: none; }
+      .bd-dock-btn:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-dock-btn .bd-ico { width: 20px; height: 20px; }
+      .bd-dock-shape { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; overflow: visible; }
+      .bd-dock-sep { flex: none; width: 1px; height: 22px; margin: 0 4px; background: var(--border); }
+      @media (max-width: 900px) { .bd-dock { max-width: calc(100% - 140px); } }
+      .bd-ghost { position: absolute; z-index: 9; box-sizing: border-box; pointer-events: none; border-radius: 10px; border: 1.5px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
+        display: flex; align-items: center; justify-content: center; color: var(--text-2); font-size: 13px; overflow: visible; }
+      .bd-ghost.is-sticky { background: color-mix(in srgb, ${STICKY} 45%, transparent); }
+      .bd-ghost.is-shape { border: 0; background: none; }
+      .bd-ghost.is-shape .bd-shape-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .bd-ghost.is-shape .bd-shape-fill { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-dasharray: 5 4; }
+      .bd-ghost.is-shape .bd-shape-line { stroke: var(--accent); }
+      .bd-ghost.away { opacity: .35; }
+      .bd-canvas.placing { cursor: copy; }
       .bd-card.locked .bd-port, .bd-card.locked .bd-grip { display: none; }
       .bd-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; opacity: 0; z-index: 2;
         background: linear-gradient(135deg, transparent 50%, var(--text-3) 50%, var(--text-3) 58%, transparent 58%, transparent 72%, var(--text-3) 72%, var(--text-3) 80%, transparent 80%); }
@@ -2569,8 +3450,9 @@ export default {
       .bd-canvas.searching .bd-card:not(.hit) { opacity: .25; }
       .bd-card.hit { box-shadow: 0 0 0 2px #fdd663; }
       .bd-band { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); pointer-events: none; z-index: 5; }
-      .bd-hint { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); max-width: 420px; text-align: center; color: var(--text-3); font-size: 14px; line-height: 1.55; pointer-events: none; }
-      .bd-hint .bd-first { pointer-events: auto; display: block; margin: 14px auto 0; height: 34px; padding: 0 16px; }
+      .bd-hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(560px, calc(100% - 48px)); box-sizing: border-box; padding: 14px 22px; border-radius: 10px; white-space: pre-line;
+        text-align: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); font-size: 14px; line-height: 1.75; pointer-events: none; }
+      .bd-hint.bad { color: var(--text-2); background: var(--float-bg); }
       .bd-canvas.readonly .bd-card { opacity: .6; }
       .bd-float { position: absolute; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 10px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 20px rgb(0 0 0 / .35); }
       .bd-fbtn { min-width: 28px; height: 28px; border-radius: 6px; color: var(--text-2); font-size: 14px; }
@@ -2611,6 +3493,7 @@ export default {
       .bd-found-row { display: block; width: 100%; text-align: left; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .bd-found-row:hover { background: var(--bg-hover); color: var(--text); }
       .bd-found-none { padding: 8px 10px; color: var(--text-3); font-size: 13px; }
+      .bd-found-disk { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; color: var(--accent); }
     `)
   }
 }
