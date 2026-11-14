@@ -170,32 +170,50 @@
   --backdrop: rgba(0, 0, 0, 0.45);
 }
 
-/* ---------- your colours: the wells in the settings ---------- */
+/* ---------- the settings of the add-on ---------- */
 
+/* the rows of the themes take the whole width: the cards under the title */
+.srow:has(> .srow-control .mt-cards) { flex-direction: column; align-items: stretch; gap: 10px; }
+.srow-control:has(.mt-cards) { flex: 1 1 auto; }
+
+/* every theme as a card: a little window in its colours (the panel, lines of text, a dot of the accent), its name */
+.mt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+.mt-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 5px; border-radius: 10px; border: 1px solid transparent; text-align: left; transition: background-color 0.12s, border-color 0.12s; }
+.mt-card:hover { background: var(--bg-hover); }
+.mt-card.on { border-color: var(--accent); background: var(--bg-hover); }
+.mt-card-pic { position: relative; display: block; height: 50px; border-radius: 6px; border: 1px solid; overflow: hidden; }
+.mt-card-side { position: absolute; left: 0; top: 0; bottom: 0; width: 25%; border-right: 1px solid; }
+.mt-card-lines { position: absolute; left: 35%; right: 10%; top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.mt-card-lines i { display: block; height: 4px; border-radius: 2px; }
+.mt-card-dot { position: absolute; right: 7px; bottom: 7px; width: 10px; height: 10px; border-radius: 50%; }
+.mt-card-name { padding: 0 2px; font-size: 12px; line-height: 1.3; color: var(--text-2); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mt-card.on .mt-card-name { color: var(--text); }
+/* a saved theme: its cross in the corner of the picture, on hover */
+.mt-card-del { position: absolute; top: 0; right: 0; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; line-height: 1;
+  background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text-3); opacity: 0; transition: opacity 0.12s; }
+.mt-card:hover .mt-card-del, .mt-card-del:focus-visible { opacity: 1; }
+.mt-card-del:hover { color: var(--danger-text); border-color: var(--danger-text); }
+
+/* your colours: four round wells, each opens the picker */
 .mt-wells { display: flex; align-items: flex-end; gap: 10px; }
-.mt-well { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer; }
-.mt-well input[type='color'] {
-  width: 28px; height: 28px; padding: 0; border: 1px solid var(--border-2); border-radius: 50%;
-  background: none; cursor: pointer; overflow: hidden;
-}
-.mt-well input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
-.mt-well input[type='color']::-webkit-color-swatch { border: none; border-radius: 50%; }
-.mt-well input[type='color']:hover { border-color: var(--outline); }
+.mt-well { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.mt-well-btn { width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--border-2); box-shadow: inset 0 0 0 2px var(--bg-panel); transition: border-color 0.12s, transform 0.12s; }
+.mt-well-btn:hover { border-color: var(--outline); transform: scale(1.08); }
 .mt-reset { margin-left: 4px; align-self: center; }
-
-/* ---------- saved themes: the list in the settings ---------- */
-
 .mt-save { align-self: center; }
-.mt-saved { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
-.mt-saved-none { font-size: 12px; color: var(--text-muted); }
-.mt-saved-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-app); }
-.mt-saved-item.on { border-color: var(--outline); }
-.mt-saved-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 5px 8px; text-align: left; border-radius: 8px; }
-.mt-saved-pick:hover { background: var(--bg-hover); }
-.mt-saved-dots { flex: none; display: flex; }
-.mt-saved-dots { gap: 2px; }
-.mt-saved-dots i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border-2); }
-.mt-saved-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text); padding-left: 3px; }
-.mt-saved-kind { flex: none; font-size: 11px; color: var(--text-muted); }
-.mt-saved-del { flex: none; width: 25px; height: 25px; margin-right: 3px; border-radius: 6px; font-size: 16px; line-height: 1; color: var(--text-3); }
-.mt-saved-del:hover { background: var(--bg-hover); color: var(--danger-text); }
+
+/* the picker: a box like the menus of Syntex */
+.mt-picker { display: flex; flex-direction: column; gap: 10px; width: 210px; padding: 4px; }
+.mt-sv { position: relative; height: 140px; border-radius: 8px; cursor: crosshair; touch-action: none;
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--hue, #f00)); }
+.mt-sv-knob { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 1px 4px rgb(0 0 0 / 0.4); pointer-events: none; }
+.mt-hue { position: relative; height: 10px; border-radius: 5px; cursor: pointer; touch-action: none;
+  background: linear-gradient(to right, #f00 0%, #ff0 16.67%, #0f0 33.33%, #0ff 50%, #00f 66.67%, #f0f 83.33%, #f00 100%); }
+.mt-hue-knob { position: absolute; top: 50%; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 1px 4px rgb(0 0 0 / 0.4); pointer-events: none; }
+.mt-picker-row { display: flex; align-items: center; gap: 8px; }
+.mt-picker-swatch { flex: none; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-2); }
+.mt-picker-code { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--bg-field); color: var(--text); font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; outline: 0; user-select: text; }
+.mt-picker-code:focus { border-color: var(--outline); }
+.mt-picker-starts { display: flex; flex-wrap: wrap; gap: 6px; }
+.mt-picker-start { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-2); transition: transform 0.12s; }
+.mt-picker-start:hover { transform: scale(1.12); }

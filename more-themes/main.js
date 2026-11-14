@@ -2,10 +2,12 @@
 // Every palette is a set of the CSS variables of Syntex (styles.css of this add-on), switched on by a class on <html>:
 // mt-dark-<id> works while Syntex is dark, mt-light-<id> while it is light, so "as the system" picks between the two.
 // "Your colours": four colours chosen by the user (background, panels, text, accent); the other variables are mixed
-// from them and written into a <style> of this add-on.
+// from them and written into a <style> of this add-on. Saved themes: such four colours kept under a name.
+// The settings show every theme as a card (a little picture of its colours); the colours are picked in a box of the
+// add-on's own (the one of the system looked foreign in Syntex).
 
 const DARK = [
-  { id: 'default', label: { ru: 'Как в Syntex', en: 'As in Syntex' } },
+  { id: 'default', label: 'Syntex' },
   { id: 'nord', label: 'Nord' },
   { id: 'dracula', label: 'Dracula' },
   { id: 'gruvbox', label: 'Gruvbox' },
@@ -16,7 +18,7 @@ const DARK = [
 ]
 
 const LIGHT = [
-  { id: 'default', label: { ru: 'Как в Syntex', en: 'As in Syntex' } },
+  { id: 'default', label: 'Syntex' },
   { id: 'gruvbox', label: 'Gruvbox' },
   { id: 'solarized', label: 'Solarized' },
   { id: 'catppuccin', label: 'Catppuccin Latte' },
@@ -39,6 +41,8 @@ const START = {
   dark: { bg: '#1e2127', panel: '#22262c', text: '#ffffff', accent: '#ffffff' },
   light: { bg: '#ffffff', panel: '#f3f4f6', text: '#15181d', accent: '#15181d' }
 }
+// the variables of Syntex the four colours stand for (for the pictures of the cards)
+const VARS = { bg: '--bg-app', panel: '--bg-panel', text: '--text', accent: '--accent' }
 
 const rgb = (c) => {
   const h = /^#?([0-9a-f]{6})$/i.exec(c)?.[1] ?? '000000'
@@ -51,6 +55,23 @@ const mix = (a, b, t) => {
   return hex(rgb(a).map((v, i) => v + (B[i] - v) * t))
 }
 const alpha = (c, a) => `rgba(${rgb(c).join(', ')}, ${a})`
+
+/** #rrggbb from hue (0–360), saturation and value (0–1), and back. */
+const fromHsv = (h, s, v) => {
+  const f = (n) => {
+    const k = (n + h / 60) % 6
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1))
+  }
+  return hex([f(5) * 255, f(3) * 255, f(1) * 255])
+}
+const toHsv = (c) => {
+  const [r, g, b] = rgb(c).map((x) => x / 255)
+  const max = Math.max(r, g, b)
+  const d = max - Math.min(r, g, b)
+  let h = 0
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max }
+}
 
 /** All the variables of Syntex from the four colours (the colours of code and of errors stay those of Syntex). */
 function palette(kind, c) {
@@ -84,6 +105,27 @@ function palette(kind, c) {
   }
 }
 
+/** The four colours of a theme of the add-on, read from its rule in styles.css (null when it is not there). */
+function readTheme(kind, id) {
+  for (const sheet of document.styleSheets) {
+    let rules
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue
+    }
+    for (const r of rules) {
+      if (!r.selectorText?.includes(`.mt-${kind}-${id}[`)) continue
+      const out = {}
+      for (const [k, v] of Object.entries(VARS)) out[k] = r.style.getPropertyValue(v).trim() || START[kind][k]
+      return out
+    }
+  }
+  return null
+}
+
+const el = (tag, cls, props = {}) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, props)
+
 // the <style> with the palettes of one's own, taken away when the add-on is switched off
 let customStyle = null
 
@@ -93,8 +135,8 @@ export default {
     const say = (t) => (typeof t === 'string' ? t : ru() ? t.ru : t.en)
     const settings = () => ({ ...DEFAULTS, ...api.data.get({}) })
     const colours = (kind) => ({ ...START[kind], ...(settings().custom?.[kind] ?? {}) })
-    // the themes the user saved under a name: { dark: [{ id, name, colours }], light: [...] }; in the list of themes
-    // they are "p-<id>"
+    // the themes the user saved under a name: { dark: [{ id, name, colours }], light: [...] }; chosen, they are
+    // "p-<id>"
     const presets = (kind) => (Array.isArray(settings().presets?.[kind]) ? settings().presets[kind] : [])
 
     // the palettes of one's own and the saved ones: rules under their classes
@@ -129,23 +171,14 @@ export default {
     }
     apply()
 
-    // the two lists of themes: the rows are kept, so that a theme saved or deleted shows in them (the settings are
-    // drawn again from the rows whenever the data of the add-on changes)
-    const optionsFor = (kind, s = settings()) => [
-      ...(kind === 'dark' ? DARK : LIGHT).map((t) => ({ value: t.id, label: t.label })),
-      ...(Array.isArray(s.presets?.[kind]) ? s.presets[kind] : []).map((p) => ({ value: 'p-' + p.id, label: p.name }))
-    ]
-    const selects = {}
+    // what the settings show, drawn again after every change (a theme chosen, saved, deleted, a colour picked)
+    const drawers = new Set()
+    const redraw = () => drawers.forEach((d) => d())
     const set = (patch) => {
-      const next = { ...settings(), ...patch }
-      // (the options first: the lists are drawn again by the change of the data)
-      for (const kind of ['dark', 'light']) if (selects[kind]) selects[kind].options = optionsFor(kind, next)
-      api.data.set(next)
+      api.data.set({ ...settings(), ...patch })
       apply()
+      redraw()
     }
-    // the rows that list the saved themes, drawn again after a save or a delete
-    const savedDrawers = new Set()
-    const redrawSaved = () => savedDrawers.forEach((d) => d())
 
     /** The colours now of "Your colours" of that kind, kept under a name and chosen at once. */
     const savePreset = async (kind) => {
@@ -156,7 +189,7 @@ export default {
       all[kind] = [...all[kind], { id, name: name.slice(0, 40), colours: colours(kind) }]
       set({ presets: all, [kind]: 'p-' + id })
       writeCustom()
-      redrawSaved()
+      redraw()
     }
     const deletePreset = async (kind, p) => {
       const sure = await api.ui.confirm(ru() ? 'Удалить тему?' : 'Delete the theme?', ru() ? `«${p.name}» пропадёт из списка тем.` : `"${p.name}" goes from the list of themes.`, ru() ? 'Удалить' : 'Delete')
@@ -166,149 +199,237 @@ export default {
       // (the theme that was on goes back to the look of Syntex)
       set({ presets: all, ...(settings()[kind] === 'p-' + p.id ? { [kind]: 'default' } : {}) })
       writeCustom()
-      redrawSaved()
+      redraw()
     }
 
-    /** Four colour wells and a reset; a colour picked makes the palette of one's own the theme of that kind. */
+    /* ---------- the picker of a colour: a box of the add-on, in the look of Syntex ---------- */
+
+    /**
+     * A square of saturation and brightness, a strip of hues, the code of the colour and a few colours to start from.
+     * `onLive` while the mouse moves (the window shows it at once), `onPick` when it is let go or the code is typed.
+     */
+    const openPicker = (anchor, value, onLive, onPick) => {
+      const r = anchor.getBoundingClientRect()
+      api.ui.popup({
+        x: r.left - 6,
+        y: r.bottom + 8,
+        mount: (box, close) => {
+          let hsv = toHsv(value)
+          let now = value
+          const root = el('div', 'mt-picker')
+          const sv = el('div', 'mt-sv')
+          const svKnob = el('i', 'mt-sv-knob')
+          sv.append(svKnob)
+          const hue = el('div', 'mt-hue')
+          const hueKnob = el('i', 'mt-hue-knob')
+          hue.append(hueKnob)
+          const row = el('div', 'mt-picker-row')
+          const swatch = el('span', 'mt-picker-swatch')
+          const code = el('input', 'mt-picker-code', { spellcheck: false, maxLength: 7 })
+          row.append(swatch, code)
+          // colours to start from: the ones of the theme that is on now
+          const starts = el('div', 'mt-picker-starts')
+          const cs = getComputedStyle(document.documentElement)
+          const seen = new Set()
+          for (const v of ['--accent', '--text', '--bg-app', '--bg-panel', '--hl-kw', '--hl-str', '--hl-num', '--hl-fn', '--hl-type', '--hl-op', '--danger-text']) {
+            const c = cs.getPropertyValue(v).trim().toLowerCase()
+            if (!/^#[0-9a-f]{6}$/.test(c) || seen.has(c)) continue
+            seen.add(c)
+            const b = el('button', 'mt-picker-start', { title: c })
+            b.style.background = c
+            b.onclick = () => {
+              hsv = toHsv(c)
+              show(c)
+              onPick(c)
+            }
+            starts.append(b)
+          }
+          root.append(sv, hue, row, starts)
+          box.append(root)
+
+          const show = (c) => {
+            now = c
+            sv.style.setProperty('--hue', fromHsv(hsv.h, 1, 1))
+            svKnob.style.left = hsv.s * 100 + '%'
+            svKnob.style.top = (1 - hsv.v) * 100 + '%'
+            svKnob.style.background = c
+            hueKnob.style.left = (hsv.h / 360) * 100 + '%'
+            swatch.style.background = c
+            if (document.activeElement !== code) code.value = c
+          }
+          show(value)
+
+          // dragged in the square or along the strip: the colour follows the mouse, kept when it is let go
+          const dragOn = (area, at) => {
+            area.addEventListener('pointerdown', (e) => {
+              if (e.button !== 0) return
+              e.preventDefault()
+              area.setPointerCapture(e.pointerId)
+              const move = (ev) => {
+                const b = area.getBoundingClientRect()
+                at(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), Math.min(1, Math.max(0, (ev.clientY - b.top) / b.height)))
+                const c = fromHsv(hsv.h, hsv.s, hsv.v)
+                show(c)
+                onLive(c)
+              }
+              const up = () => {
+                area.removeEventListener('pointermove', move)
+                area.removeEventListener('pointerup', up)
+                onPick(now)
+              }
+              area.addEventListener('pointermove', move)
+              area.addEventListener('pointerup', up)
+              move(e)
+            })
+          }
+          dragOn(sv, (x, y) => {
+            hsv = { ...hsv, s: x, v: 1 - y }
+          })
+          dragOn(hue, (x) => {
+            hsv = { ...hsv, h: Math.min(359.9, x * 360) }
+          })
+          // the code typed: taken as soon as it is a whole colour; Enter closes the box
+          code.oninput = () => {
+            const v = code.value.trim().replace(/^([0-9a-f]{6})$/i, '#$1').toLowerCase()
+            if (!/^#[0-9a-f]{6}$/.test(v)) return
+            hsv = toHsv(v)
+            show(v)
+            onPick(v)
+          }
+          code.onkeydown = (e) => {
+            if (e.key === 'Enter') close()
+          }
+          code.onblur = () => (code.value = now)
+        }
+      })
+    }
+
+    /* ---------- the cards of the themes ---------- */
+
+    /** The colours a card shows: those of the theme, of "Your colours" or of a saved theme. */
+    const cardColours = (kind, id) => {
+      if (id === 'default') return START[kind]
+      if (id === 'custom') return colours(kind)
+      if (id.startsWith('p-')) return { ...START[kind], ...(presets(kind).find((p) => 'p-' + p.id === id)?.colours ?? {}) }
+      return readTheme(kind, id) ?? START[kind]
+    }
+
+    /** One theme as a small picture of a window: the panel on the left, lines of text, a dot of the accent. */
+    const card = (kind, id, name, saved) => {
+      const c = cardColours(kind, id)
+      const b = el('button', 'mt-card' + (settings()[kind] === id ? ' on' : ''), { title: name })
+      b.dataset.theme = id
+      const pic = el('span', 'mt-card-pic')
+      pic.style.background = c.bg
+      pic.style.borderColor = mix(c.bg, c.text, 0.14)
+      const side = el('i', 'mt-card-side')
+      side.style.background = c.panel
+      side.style.borderColor = mix(c.panel, c.text, 0.1)
+      const lines = el('span', 'mt-card-lines')
+      for (const w of [70, 92, 54]) {
+        const l = el('i')
+        l.style.width = w + '%'
+        l.style.background = mix(c.text, c.bg, w === 70 ? 0 : 0.45)
+        lines.append(l)
+      }
+      const dot = el('i', 'mt-card-dot')
+      dot.style.background = c.accent
+      pic.append(side, lines, dot)
+      const label = el('span', 'mt-card-name', { textContent: name })
+      b.append(pic, label)
+      b.onclick = () => set({ [kind]: id })
+      if (saved) {
+        const del = el('span', 'mt-card-del', { title: ru() ? 'Удалить тему' : 'Delete the theme', textContent: '×' })
+        del.setAttribute('role', 'button')
+        del.setAttribute('aria-label', del.title)
+        del.onclick = (e) => {
+          e.stopPropagation()
+          void deletePreset(kind, saved)
+        }
+        b.append(del)
+      }
+      return b
+    }
+
+    /** The row of the themes of one kind: every theme as a card, the saved ones after the others. */
+    const themesRow = (kind) => ({
+      id: kind,
+      type: 'mount',
+      title: kind === 'dark' ? { ru: 'Тёмная тема', en: 'Dark theme' } : { ru: 'Светлая тема', en: 'Light theme' },
+      desc: kind === 'dark' ? { ru: 'Пока в Syntex тёмная тема', en: 'While Syntex is dark' } : { ru: 'Пока в Syntex светлая тема', en: 'While Syntex is light' },
+      mount: (box) => {
+        const grid = el('div', 'mt-cards')
+        grid.dataset.kind = kind
+        const draw = () => {
+          grid.replaceChildren(
+            ...(kind === 'dark' ? DARK : LIGHT).map((t) => card(kind, t.id, say(t.label))),
+            ...presets(kind).map((p) => card(kind, 'p-' + p.id, p.name, p))
+          )
+        }
+        draw()
+        drawers.add(draw)
+        box.append(grid)
+        return () => drawers.delete(draw)
+      }
+    })
+
+    /** Four colour wells (each opens the picker), a reset and "Save…"; a colour picked turns "Your colours" on. */
     const customRow = (kind) => ({
       id: 'custom-' + kind,
       type: 'mount',
       title: kind === 'dark' ? { ru: 'Свои цвета тёмной темы', en: 'Your colours, dark' } : { ru: 'Свои цвета светлой темы', en: 'Your colours, light' },
       desc: { ru: 'Выбранный цвет включает «Свои цвета»', en: 'A colour picked switches to "Your colours"' },
       mount: (box) => {
-        const wrap = document.createElement('div')
-        wrap.className = 'mt-wells'
-        const inputs = {}
+        const wrap = el('div', 'mt-wells')
+        const wells = {}
         for (const k of KEYS) {
-          const label = document.createElement('label')
-          label.className = 'mt-well'
-          const input = document.createElement('input')
-          input.type = 'color'
-          input.value = colours(kind)[k.id]
-          input.dataset.key = k.id
-          // dragged through the picker: shown at once, kept when let go
-          input.oninput = () => {
+          const label = el('span', 'mt-well')
+          const well = el('button', 'mt-well-btn', { title: say(k.label) })
+          well.dataset.key = k.id
+          well.setAttribute('aria-label', say(k.label))
+          well.style.background = colours(kind)[k.id]
+          well.onclick = () => {
             if (settings()[kind] !== 'custom') set({ [kind]: 'custom' })
-            writeCustom({ [kind]: { [k.id]: input.value } })
+            openPicker(
+              well,
+              colours(kind)[k.id],
+              (c) => {
+                well.style.background = c
+                writeCustom({ [kind]: { [k.id]: c } })
+              },
+              (c) => {
+                well.style.background = c
+                const s = settings()
+                set({ [kind]: 'custom', custom: { ...(s.custom ?? {}), [kind]: { ...colours(kind), [k.id]: c } } })
+                writeCustom()
+              }
+            )
           }
-          input.onchange = () => {
-            const s = settings()
-            set({ [kind]: 'custom', custom: { ...(s.custom ?? {}), [kind]: { ...colours(kind), [k.id]: input.value } } })
-            writeCustom()
-          }
-          const name = document.createElement('span')
-          name.textContent = say(k.label)
-          label.append(input, name)
+          label.append(well, el('span', '', { textContent: say(k.label) }))
           wrap.append(label)
-          inputs[k.id] = input
+          wells[k.id] = well
         }
-        const reset = document.createElement('button')
-        reset.className = 'btn mt-reset'
-        reset.textContent = ru() ? 'Сбросить' : 'Reset'
-        reset.title = ru() ? 'Вернуть цвета Syntex' : 'Back to the colours of Syntex'
+        const draw = () => {
+          for (const k of KEYS) wells[k.id].style.background = colours(kind)[k.id]
+        }
+        const reset = el('button', 'btn mt-reset', { textContent: ru() ? 'Сбросить' : 'Reset', title: ru() ? 'Вернуть цвета Syntex' : 'Back to the colours of Syntex' })
         reset.onclick = () => {
           const custom = { ...(settings().custom ?? {}) }
           delete custom[kind]
           set({ custom })
           writeCustom()
-          for (const k of KEYS) inputs[k.id].value = START[kind][k.id]
+          redraw()
         }
-        const save = document.createElement('button')
-        save.className = 'btn mt-save'
-        save.textContent = ru() ? 'Сохранить…' : 'Save…'
-        save.title = ru() ? 'Сохранить эти цвета как тему со своим названием' : 'Keep these colours as a theme with a name'
+        const save = el('button', 'btn mt-save', { textContent: ru() ? 'Сохранить…' : 'Save…', title: ru() ? 'Сохранить эти цвета как тему со своим названием' : 'Keep these colours as a theme with a name' })
         save.onclick = () => void savePreset(kind)
         wrap.append(reset, save)
         box.append(wrap)
+        drawers.add(draw)
+        return () => drawers.delete(draw)
       }
     })
 
-    /** The saved themes of both kinds: four dots of their colours, the name (a click turns it on) and a cross. */
-    const savedRow = {
-      id: 'saved',
-      type: 'mount',
-      title: { ru: 'Сохранённые темы', en: 'Saved themes' },
-      desc: { ru: 'Появляются в списках тем выше', en: 'They are in the lists of themes above' },
-      mount: (box) => {
-        const list = document.createElement('div')
-        list.className = 'mt-saved'
-        const draw = () => {
-          list.replaceChildren()
-          const all = ['dark', 'light'].flatMap((kind) => presets(kind).map((p) => ({ kind, p })))
-          if (!all.length) {
-            const none = document.createElement('span')
-            none.className = 'mt-saved-none'
-            none.textContent = ru() ? 'Пока нет: «Сохранить…» у своих цветов' : 'None yet: "Save…" by your colours'
-            list.append(none)
-            return
-          }
-          for (const { kind, p } of all) {
-            const item = document.createElement('div')
-            item.className = 'mt-saved-item' + (settings()[kind] === 'p-' + p.id ? ' on' : '')
-            item.dataset.preset = p.id
-            const pick = document.createElement('button')
-            pick.className = 'mt-saved-pick'
-            pick.title = ru() ? 'Включить' : 'Turn on'
-            const dots = document.createElement('span')
-            dots.className = 'mt-saved-dots'
-            for (const k of KEYS) {
-              const d = document.createElement('i')
-              d.style.background = p.colours?.[k.id] ?? START[kind][k.id]
-              dots.append(d)
-            }
-            const name = document.createElement('span')
-            name.className = 'mt-saved-name'
-            name.textContent = p.name
-            const kindLabel = document.createElement('span')
-            kindLabel.className = 'mt-saved-kind'
-            kindLabel.textContent = kind === 'dark' ? (ru() ? 'тёмная' : 'dark') : ru() ? 'светлая' : 'light'
-            pick.append(dots, name, kindLabel)
-            pick.onclick = () => {
-              set({ [kind]: 'p-' + p.id })
-              redrawSaved()
-            }
-            const del = document.createElement('button')
-            del.className = 'mt-saved-del'
-            del.title = ru() ? 'Удалить' : 'Delete'
-            del.setAttribute('aria-label', del.title)
-            del.textContent = '×'
-            del.onclick = () => void deletePreset(kind, p)
-            item.append(pick, del)
-            list.append(item)
-          }
-        }
-        draw()
-        savedDrawers.add(draw)
-        box.append(list)
-        return () => savedDrawers.delete(draw)
-      }
-    }
-
-    selects.dark = {
-      id: 'dark',
-      type: 'select',
-      title: { ru: 'Тёмная тема', en: 'Dark theme' },
-      desc: { ru: 'Пока в Syntex тёмная тема', en: 'While Syntex is dark' },
-      options: optionsFor('dark'),
-      value: () => settings().dark,
-      onChange: (v) => {
-        set({ dark: v })
-        redrawSaved()
-      }
-    }
-    selects.light = {
-      id: 'light',
-      type: 'select',
-      title: { ru: 'Светлая тема', en: 'Light theme' },
-      desc: { ru: 'Пока в Syntex светлая тема', en: 'While Syntex is light' },
-      options: optionsFor('light'),
-      value: () => settings().light,
-      onChange: (v) => {
-        set({ light: v })
-        redrawSaved()
-      }
-    }
-    api.settings.add([selects.dark, customRow('dark'), selects.light, customRow('light'), savedRow])
+    api.settings.add([themesRow('dark'), customRow('dark'), themesRow('light'), customRow('light')])
   },
   onunload() {
     customStyle?.remove()
