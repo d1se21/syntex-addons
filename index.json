@@ -7,10 +7,10 @@
         "en": "Interactive board"
       },
       "description": {
-        "ru": "Доска во вкладке: стикеры, карточки, заметки с превью, картинки, ссылки, чек-листы, фигуры и рамки; стрелки с подписями; выделение рамкой, выравнивание, отмена, поиск, мини-карта и меню по правой кнопке на всём. Каждая доска — отдельный файл .board (по умолчанию в папке «Boards»), открывается кликом в дереве. Ctrl+Alt+B — открыть.",
-        "en": "A board in a tab: sticky notes, cards, notes with a preview, pictures, links, check lists, shapes and frames; labelled arrows; selection by a band, alignment, undo, search, a minimap and a right-click menu on everything. Each board is a .board file of its own (in the \"Boards\" folder by default), opened by a click in the tree. Ctrl+Alt+B opens it."
+        "ru": "Доска во вкладке: карточки, стикеры, заметки с превью, картинки и любые файлы из дерева, ссылки, чек-листы, рамки и 13 фигур блок-схем (процесс, решение, начало/конец, данные, документ, база данных…) — перетаскиваются с панели внизу. Стрелки держатся за стороны блоков, у них бывают точки изгиба (потяните линию), подписи и ломаный вид. Ctrl при перетаскивании ставит блоки на точки сетки. Доска — файл .board, создаётся сам, как только на поле что-то положили; имя меняется в заголовке. Ctrl+Alt+B — открыть.",
+        "en": "A board in a tab: cards, sticky notes, notes with a preview, pictures and any files from the tree, links, check lists, frames and 13 flowchart shapes (process, decision, start/end, data, document, database…) dragged from the panel at the bottom. Arrows hold on to the sides of blocks and have bend points (drag the line), labels and an elbow style. Ctrl while dragging puts blocks on the dots of the grid. A board is a .board file made by itself the moment something is put on the field; its name is edited in its title. Ctrl+Alt+B opens it."
       },
-      "version": "1.3.5",
+      "version": "1.4.0",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "7f182d1485cac8e2c85b73fca1f069a44009f9560bf43ae2ecfe83f5b1d791aa",
-        "main.js": "c74b1880711906f42812a3888267fc54fb07c747f610a3d77d99e6dd1bfa0db2"
+        "manifest.json": "a682e7dee80fa225508f8f99a1fbfc3ac874150632f641779858a49eb20289a1",
+        "main.js": "6c0f7ee6e143f114ca018ba0ddfe2b34303ad9f2499c4486a2cafc707e00833c"
       }
     },
     {
