@@ -23,6 +23,7 @@ const TEXT = {
     tooLong: 'Запись длится 35 минут: это предел, она остановлена и вставлена',
     model: 'Расшифровка в текст',
     modelDesc: 'Кнопка «текст» на записи. Распознаёт Whisper на этом компьютере: звук никуда не отправляется, модель скачивается один раз',
+    fastNote: 'Быстрая модель может перепутать язык речи и ошибаться в словах; если текст выходит неверным, выберите «Точная»',
     speech: 'Язык речи',
     showText: 'Показать текст',
     hideText: 'Скрыть текст',
@@ -52,6 +53,7 @@ const TEXT = {
     tooLong: 'The recording reached 35 minutes, the limit: it was stopped and inserted',
     model: 'Speech to text',
     modelDesc: 'The text button on a recording. Whisper runs on this computer: the sound goes nowhere, the model is downloaded once',
+    fastNote: 'The fast model may mistake the language of the speech and get words wrong; if the text comes out wrong, choose Accurate',
     speech: 'Language of the speech',
     showText: 'Show the text',
     hideText: 'Hide the text',
@@ -152,6 +154,14 @@ const SPEECH = [
 // the texts, next to the notes (they travel with them): one file for each recording
 const DIR = '.syntex/voice-notes'
 
+/** Whether Syntex hears the language of the speech by itself (add-on API 12, Syntex 0.1.22 and later). */
+const detects = (api) => (api.apiVersion ?? 0) >= 12
+/**
+ * The language of the speech unless chosen: detected, whatever the language of the window. A Syntex that cannot
+ * detect it would take English: there the language of the window is the better guess.
+ */
+const defaultSpeech = (api) => (detects(api) || api.language() !== 'ru' ? 'auto' : 'russian')
+
 /** A short, steady fingerprint of a text (FNV-1a, 32 bits twice). */
 const hashOf = (text) => {
   let a = 0x811c9dc5
@@ -194,7 +204,8 @@ function transcripts(api, t) {
     } catch {
       /* none, or broken: made again when asked */
     }
-    if (entry && typeof entry.text === 'string') cache.set(path, entry)
+    // (a text of 1.4.0, before the language was detected, may be Russian heard as English: made again when asked)
+    if (entry && typeof entry.text === 'string' && (entry.v === 2 || !detects(api))) cache.set(path, entry)
     return cache.get(path) ?? null
   }
   // (the writes of one file one after the other: the text made and a press that hides it at once must land in that
@@ -213,11 +224,12 @@ function transcripts(api, t) {
     if (busy.has(path)) return busy.get(path)
     const s = settings()
     const model = MODELS[s.model] ? s.model : 'base'
-    const language = s.speech ?? (api.language() === 'ru' ? 'russian' : 'auto')
+    // (the speech is heard in its own language whatever the language of the window: detected unless chosen)
+    const language = s.speech ?? defaultSpeech(api)
     const job = api.speech
       .transcribe(path, { model, language }, onProgress)
       .then((text) => {
-        save(path, { text, shown: true })
+        save(path, detects(api) ? { text, shown: true, v: 2 } : { text, shown: true })
         return text
       })
       .finally(() => busy.delete(path))
@@ -537,7 +549,15 @@ export default {
         id: 'model',
         type: 'select',
         title: { en: TEXT.en.model, ru: TEXT.ru.model },
-        desc: { en: TEXT.en.modelDesc, ru: TEXT.ru.modelDesc },
+        // (read each time the settings are drawn: while the fast model is chosen, it says what it gets wrong)
+        desc: {
+          get en() {
+            return TEXT.en.modelDesc + ((data().model ?? 'base') === 'base' ? '. ' + TEXT.en.fastNote : '')
+          },
+          get ru() {
+            return TEXT.ru.modelDesc + ((data().model ?? 'base') === 'base' ? '. ' + TEXT.ru.fastNote : '')
+          }
+        },
         options: Object.entries(MODELS).map(([value, m]) => ({ value, label: m.label })),
         value: () => data().model ?? 'base',
         onChange: (v) => api.data.set({ ...data(), model: v })
@@ -547,7 +567,7 @@ export default {
         type: 'select',
         title: { en: TEXT.en.speech, ru: TEXT.ru.speech },
         options: SPEECH.map((s) => ({ value: s.value, label: s.label })),
-        value: () => data().speech ?? (api.language() === 'ru' ? 'russian' : 'auto'),
+        value: () => data().speech ?? defaultSpeech(api),
         onChange: (v) => api.data.set({ ...data(), speech: v })
       }
     ])

@@ -20,7 +20,7 @@
       ],
       "hashes": {
         "manifest.json": "7f182d1485cac8e2c85b73fca1f069a44009f9560bf43ae2ecfe83f5b1d791aa",
-        "main.js": "c74b1880711906f42812a3888267fc54fb07c747f610a3d77d99e6dd1bfa0db2"
+        "main.js": "6a43ec94a25e39955979aa610c9f4bec5801c8ca33f86abcd7032894e2056bc0"
       }
     },
     {
@@ -247,7 +247,7 @@
         "ru": "Запись с микрофона прямо в заметку: Ctrl+Alt+R или «Вставка» в меню по правой кнопке. Кнопка «текст» на записи показывает, что в ней сказано, и прячет текст обратно; распознаёт Whisper на этом компьютере. Микрофон, модель и язык речи выбираются в настройках аддона.",
         "en": "Record from the microphone into the note: Ctrl+Alt+R or Insert in the right-click menu. The text button on a recording shows what is said in it and hides it again; Whisper recognises it on this computer. The microphone, the model and the language are chosen in the add-on's settings."
       },
-      "version": "1.4.0",
+      "version": "1.4.1",
       "author": "Syntex",
       "minApi": 6,
       "permissions": [
@@ -260,8 +260,8 @@
         "styles.css"
       ],
       "hashes": {
-        "manifest.json": "e0b25eff2d2e52cd64ef2cf588febcb532fbe9cac1debb68fe58c652c7486819",
-        "main.js": "b6f68a620b44d7268aa85d26ab9e02f94743cacfe50bcfc5ed884ad8fc3deeae",
+        "manifest.json": "33e98f9cac06ead3fb05c13c4b6b13a518f13084f76f916c582f6267c43702d4",
+        "main.js": "372f5628529e1b2375e313b1fea14e79a426f178bb8c59e5cf1f7516c08533b8",
         "styles.css": "ae8515f065126f495035a174d1e2049c928249b2b94ab87148f009aae2e35e58"
       }
     }
