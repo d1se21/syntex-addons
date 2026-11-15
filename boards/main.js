@@ -469,6 +469,8 @@ export default {
       let hitAt = 0
       let hist = { stack: [], i: -1 }
       let miniFrame = 0
+      // the minimap dragged now (see its pointerdown)
+      let miniHeld = false
       const cardEls = new Map()
       // cards just made and being written for the first time: left empty, they are taken back
       const fresh = new Set()
@@ -2508,12 +2510,15 @@ export default {
           // (a board that is all in view needs no map)
           const b = board.cards.length ? boundsOf(board.cards) : null
           miniBox.classList.toggle('fits', !b || (b.x >= view.x && b.y >= view.y && b.x + b.w <= view.x + view.w && b.y + b.h <= view.y + view.h))
-          const all = board.cards.length ? boundsOf([...board.cards, { type: 'text', ...view, w: view.w, h: view.h }]) : view
-          const pad = 20
-          const s = Math.min((W - 8) / (all.w + pad), (H - 8) / (all.h + pad))
-          const ox = (W - all.w * s) / 2 - all.x * s
-          const oy = (H - all.h * s) / 2 - all.y * s
-          mini._map = { s, ox, oy }
+          // (while the map is dragged its scale stays as it was when pressed: the place under the mouse must not move
+          // away as the view it follows moves)
+          if (!miniHeld) {
+            const all = board.cards.length ? boundsOf([...board.cards, { type: 'text', ...view, w: view.w, h: view.h }]) : view
+            const pad = 20
+            const s = Math.min((W - 8) / (all.w + pad), (H - 8) / (all.h + pad))
+            mini._map = { s, ox: (W - all.w * s) / 2 - all.x * s, oy: (H - all.h * s) / 2 - all.y * s }
+          }
+          const { s, ox, oy } = mini._map
           const css = getComputedStyle(mini)
           for (const c of board.cards) {
             const q = rectOf(c)
@@ -2527,11 +2532,16 @@ export default {
           ctx.strokeRect(view.x * s + ox, view.y * s + oy, view.w * s, view.h * s)
         })
       }
+      // the map being dragged: it stays shown (the whole board coming into view half way would hide it under the mouse,
+      // and the drag would never end) and keeps its scale until the button is let go
       mini.addEventListener('pointerdown', (e) => {
-        if (!mini._map || !board) return
+        if (e.button !== 0 || !mini._map || !board || miniHeld) return
+        miniHeld = true
+        miniBox.classList.add('held')
         mini.setPointerCapture(e.pointerId)
         const go = (ev) => {
           const b = mini.getBoundingClientRect()
+          if (!b.width) return
           const { s, ox, oy } = mini._map
           const wx = ((ev.clientX - b.left) * (mini.width / b.width) - ox) / s
           const wy = ((ev.clientY - b.top) * (mini.height / b.height) - oy) / s
@@ -2541,13 +2551,21 @@ export default {
           applyView()
         }
         go(e)
+        // (let go, or taken away by the system: the drag ends either way, never left half done)
         const up = () => {
           mini.removeEventListener('pointermove', go)
           mini.removeEventListener('pointerup', up)
+          mini.removeEventListener('pointercancel', up)
+          mini.removeEventListener('lostpointercapture', up)
+          miniHeld = false
+          miniBox.classList.remove('held')
           saveView()
+          drawMini()
         }
         mini.addEventListener('pointermove', go)
         mini.addEventListener('pointerup', up)
+        mini.addEventListener('pointercancel', up)
+        mini.addEventListener('lostpointercapture', up)
       })
 
       /* ====================================================================== menus */
@@ -4340,7 +4358,7 @@ export default {
       .bd-zoom-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); }
       .bd-minibox { position: absolute; right: 12px; bottom: 12px; z-index: 6; }
       .bd-minibox .bd-mini { position: static; display: block; }
-      .bd-minibox.fits:not(.folded) { display: none; }
+      .bd-minibox.fits:not(.folded):not(.held):not(:hover) { display: none; }
       .bd-mini-fold { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); background: var(--float-bg); opacity: 0; display: flex; align-items: center; justify-content: center; }
       .bd-minibox:hover .bd-mini-fold { opacity: 1; }
       .bd-mini-fold:hover { color: var(--text); background: var(--bg-hover); }
