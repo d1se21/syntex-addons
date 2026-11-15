@@ -172,25 +172,45 @@ const ICONS = {
  * The box of an icon, moved onto its drawing so that the icon is in the middle of its button (the hand and the
  * magnifier are drawn off the middle of their grid). Measured once per icon in a hidden svg.
  */
+/**
+ * The icons of the dock, drawn as the icons of Syntex are: on the grid of 16, with round ends and corners (shown at
+ * 22 px with lines of 1.75 px, a little bigger and bolder than the rail, since they are the main tools of the board).
+ */
+const PAGE16 = 'M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h7a1.5 1.5 0 0 0 1.5-1.5V4.5zM9.5 1.5v2a1 1 0 0 0 1 1h2'
+const DOCK_ICONS = {
+  // the arrow of the mouse
+  pointer: 'M3.5 2.2 12.6 7.1a.35.35 0 0 1-.06.64L8.9 8.9 7.3 12.6a.35.35 0 0 1-.65-.03z',
+  // an open hand: four fingers (the middle one the tallest), the thumb aside, the lines between the fingers
+  hand: 'M5 9V3.6a1 1 0 0 1 2 0V2.6a1 1 0 0 1 2 0v1a1 1 0 0 1 2 0v1.5a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5H8.2a4 4 0 0 1-3.45-1.97L2.8 9.2a1.1 1.1 0 0 1 1.9-1.1zM7 3.6v4.4M9 3.6v4.4M11 5.1v2.9',
+  card: PAGE16,
+  sticky: 'M3.5 2.5h9a1 1 0 0 1 1 1V9.5l-4 4h-6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM13.5 9.5h-3a1 1 0 0 0-1 1v3',
+  todo: 'M2 4.6l1.3 1.3L5.7 3.5M8 4.6h6M2 10.6l1.3 1.3 2.4-2.4M8 10.6h6',
+  note: PAGE16 + 'M5.5 8h5M5.5 10.5h5M5.5 5.5h1.5',
+  media: 'M3.5 2.5h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zM2.5 11l3-3 2.6 2.6 1.9-1.9 3.5 3.5M10.5 4.6a.9.9 0 1 0 0 1.8.9.9 0 1 0 0-1.8',
+  frame: 'M3.5 5.5h9a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1zM2.5 2.5h5',
+  arrow: 'M2.5 8h11M9.5 4l4 4-4 4',
+  chevronUp: 'M4.5 10 8 6.5l3.5 3.5'
+}
 const boxes = new Map()
-const boxOf = (name) => {
-  if (boxes.has(name)) return boxes.get(name)
-  let vb = '0 0 24 24'
+const boxOf = (name, set = ICONS, size = 24) => {
+  const key = size + ':' + name
+  if (boxes.has(key)) return boxes.get(key)
+  let vb = `0 0 ${size} ${size}`
   try {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    svg.setAttribute('style', 'position:fixed;left:-99px;top:0;width:24px;height:24px;visibility:hidden')
+    svg.setAttribute('style', `position:fixed;left:-99px;top:0;width:${size}px;height:${size}px;visibility:hidden`)
     const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    p.setAttribute('d', ICONS[name])
+    p.setAttribute('d', set[name])
     svg.append(p)
     document.body.append(svg)
     const b = p.getBBox()
     svg.remove()
     const r = (v) => Math.round(v * 8) / 8
-    if (b.width || b.height) vb = `${r(b.x + b.width / 2 - 12)} ${r(b.y + b.height / 2 - 12)} 24 24`
+    if (b.width || b.height) vb = `${r(b.x + b.width / 2 - size / 2)} ${r(b.y + b.height / 2 - size / 2)} ${size} ${size}`
   } catch {
     /* the plain box */
   }
-  boxes.set(name, vb)
+  boxes.set(key, vb)
   return vb
 }
 /** An icon drawn like the icons of Syntex (lines of the same width, in the colour of the text). */
@@ -200,6 +220,16 @@ const icon = (name) => {
   svg.setAttribute('class', 'bd-ico' + (name === 'more' || name === 'grid' ? ' bd-ico-dots' : ''))
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
   p.setAttribute('d', ICONS[name])
+  svg.append(p)
+  return svg
+}
+/** An icon of the dock (the grid of 16, in the middle of its button). */
+const dockIcon = (name) => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', boxOf(name, DOCK_ICONS, 16))
+  svg.setAttribute('class', 'bd-dico')
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  p.setAttribute('d', DOCK_ICONS[name])
   svg.append(p)
   return svg
 }
@@ -217,7 +247,7 @@ const hostOf = (u) => {
 }
 const IS_URL = /^(https?:\/\/|www\.)\S+$/i
 
-const newBoard = () => ({ v: 2, cards: [], links: [], view: { x: 0, y: 0, k: 1 }, settings: { grid: 'dots', snapGrid: false, guides: true } })
+const newBoard = () => ({ v: 2, cards: [], links: [], view: { x: 0, y: 0, k: 1 }, settings: { grid: 'dots', guides: true } })
 
 const sizeOf = (c) => ({ w: c.w ?? DEF[c.type][0], h: c.h ?? DEF[c.type][1] })
 const rectOf = (c) => ({ x: c.x, y: c.y, ...sizeOf(c) })
@@ -348,6 +378,15 @@ export default {
       )
     const data = () => api.data.get({ last: '' })
     const boardPaths = () => api.vault.listFiles(EXT).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    // a board just made goes to the bottom of its folder in the tree, where it is seen at once (API 13; an older
+    // Syntex keeps it in the order by name)
+    const toBottom = (p) => {
+      try {
+        api.vault.placeLast?.(p)
+      } catch {
+        /* the tree keeps its order */
+      }
+    }
 
     // notes sent to the board while its tab is not open: added once it is
     let controller = null
@@ -470,7 +509,8 @@ export default {
           return
         }
         const seen = data().hintsDone ?? []
-        if (board.cards.length && path && !seen.includes(path)) api.data.set({ ...data(), hintsDone: [...seen, path].slice(-400) })
+        // (a block still being typed for the first time does not count: Esc may take it back)
+        if (board.cards.some((c) => !fresh.has(c.id)) && path && !seen.includes(path)) api.data.set({ ...data(), hintsDone: [...seen, path].slice(-400) })
         hint.hidden = board.cards.length > 0 || (!!path && seen.includes(path))
       }
       const forgetHint = (p) => {
@@ -485,9 +525,25 @@ export default {
       zoomLabel.onclick = (e) => board && menuAtButton(e, zoomMenu(), true)
       const undoBtn = el('button', { className: 'bd-undo', title: tt('Отменить (Ctrl+Z)', 'Undo (Ctrl+Z)'), onclick: () => undo() }, [icon('undo')])
       const redoBtn = el('button', { className: 'bd-redo', title: tt('Повторить (Ctrl+Y)', 'Redo (Ctrl+Y)'), onclick: () => redo() }, [icon('redo')])
+      // the snapping to the dots of the grid: on by default, so that boards come out even (Alt while dragging frees a
+      // block for a moment); turned off and on here and in "View"
+      const snapOn = () => data().snap !== false
+      const snapBtn = el('button', { className: 'bd-snap' }, [icon('grid')])
+      const syncSnap = () => {
+        snapBtn.classList.toggle('on', snapOn())
+        snapBtn.title = snapOn() ? tt('Привязка к сетке включена — щёлкните, чтобы выключить (Alt при перетаскивании — без привязки)', 'Snapping to the grid is on: click to turn it off (Alt while dragging: no snapping)') : tt('Привязка к сетке выключена — щёлкните, чтобы включить', 'Snapping to the grid is off: click to turn it on')
+      }
+      const setSnap = (on) => {
+        api.data.set({ ...data(), snap: on })
+        syncSnap()
+      }
+      snapBtn.onclick = () => setSnap(!snapOn())
+      syncSnap()
       const zoomBox = el('div', { className: 'bd-zoombox' }, [
         undoBtn,
         redoBtn,
+        el('span', { className: 'bd-zoom-sep' }),
+        snapBtn,
         el('span', { className: 'bd-zoom-sep' }),
         el('button', { textContent: '−', title: tt('Уменьшить (Ctrl+−)', 'Zoom out (Ctrl+−)'), onclick: () => zoomBy(1 / 1.25) }),
         zoomLabel,
@@ -530,6 +586,11 @@ export default {
           await materialize()
           if (!path || board !== shown) return
         }
+        // (the board made on entering, with nothing on it but a block still being typed: its file stays empty)
+        if (untouched && untouched === path && !board.cards.some((c) => !fresh.has(c.id))) {
+          dirty = false
+          return
+        }
         dirty = false
         const text = serialize(nameOf(path), board)
         lastWritten = text
@@ -556,6 +617,8 @@ export default {
         }, 500)
       }
       const changed = () => {
+        // (something was done on the board made on entering: it stays)
+        if (untouched && untouched === path && board?.cards.some((c) => !fresh.has(c.id))) untouched = null
         dirty = true
         clearTimeout(saveTimer)
         saveTimer = setTimeout(() => void write(), 500)
@@ -1304,19 +1367,19 @@ export default {
         const w = props.w ?? dw
         const h = props.h ?? dh
         let p = freeSpot(w, h, at)
-        if (snap || board.settings.snapGrid) p = snapPt(p, true)
+        if (snap || snapOn()) p = snapPt(p, true)
         const card = { id: uid(), x: p.x, y: p.y, ...props, w, h }
         // frames go to the back of the array, the rest to the front
         if (card.type === 'frame') board.cards.unshift(card)
         else board.cards.push(card)
         makeCard(card)
         setSel([card.id])
+        // (a block to be typed into is "new" before the change is kept: an untouched board stays untouched while it is)
+        const typed = edit && ['text', 'sticky', 'shape', 'todo', 'frame'].includes(card.type)
+        if (typed) fresh.add(card.id)
         commit()
         syncHint()
-        if (edit && ['text', 'sticky', 'shape', 'todo', 'frame'].includes(card.type)) {
-          fresh.add(card.id)
-          startEdit(card)
-        }
+        if (typed) startEdit(card)
         return card
       }
 
@@ -1687,14 +1750,8 @@ export default {
             ny += gy.shift
             lines.push({ v: false, at: gy.at, from: Math.min(gy.r.x, nx) - 20, to: Math.max(gy.r.x + gy.r.w, nx + box.w) + 20 })
           }
-          if (board.settings.snapGrid) {
-            if (!gx) nx = Math.round(nx / GRID) * GRID
-            if (!gy) ny = Math.round(ny / GRID) * GRID
-          }
-        } else if (!off && board.settings.snapGrid) {
-          nx = Math.round(nx / GRID) * GRID
-          ny = Math.round(ny / GRID) * GRID
         }
+        // (the grid is kept by the caller: with the snapping on, each card goes onto the dots)
         return { dx: nx - box.x, dy: ny - box.y, lines }
       }
       /** A size of whole steps of the grid near this one (never below the least size of the card). */
@@ -1801,8 +1858,26 @@ export default {
           }
           if (!moving.length) return
           const grid = ev.ctrlKey || ev.metaKey
+          // the snapping to the grid (on by default): the corner of each card on a dot as it moves; Alt frees it
+          const dots = !grid && snapOn() && !(ev.altKey && !startAlt)
           let lines = []
-          if (grid) {
+          if (dots) {
+            for (const c of moving) {
+              const o = origin.get(c.id)
+              c.x = Math.round((o.x + dx) / GRID) * GRID
+              c.y = Math.round((o.y + dy) / GRID) * GRID
+              if (sizeOf(c).w !== o.w || sizeOf(c).h !== o.h) {
+                c.w = o.w
+                c.h = o.h
+                if (c.type === 'shape') redrawShape(c)
+              }
+              place(c)
+            }
+            const o = origin.get(card.id) ?? origin.get(moving[0].id)
+            const c = origin.has(card.id) ? card : moving[0]
+            dx = c.x - o.x
+            dy = c.y - o.y
+          } else if (grid) {
             // every card on the dots: its corner on the nearest one, its size whole steps of the grid
             for (const c of moving) {
               const o = origin.get(c.id)
@@ -1883,7 +1958,7 @@ export default {
         const move = (ev) => {
           const k = board.view.k
           const ctrl = ev.ctrlKey || ev.metaKey
-          const snap = ctrl || (board.settings.snapGrid && !ev.altKey)
+          const snap = ctrl || (snapOn() && !ev.altKey)
           const g = (v) => (snap ? Math.round(v / GRID) * GRID : v)
           const dx = (ev.clientX - from.x) / k
           const dy = (ev.clientY - from.y) / k
@@ -2108,7 +2183,7 @@ export default {
             l.pts = [...(l.pts ?? [])]
             l.pts.splice(i, 0, snapPt(at, false))
           }
-          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey || (snapOn() && !ev.altKey))
           drawLinks()
           placeFloat()
         }
@@ -2125,7 +2200,7 @@ export default {
               if (!board.links.includes(l)) return
               const j = bendIndex(l, at)
               l.pts = [...(l.pts ?? [])]
-              l.pts.splice(j, 0, snapPt(at, e.ctrlKey || e.metaKey))
+              l.pts.splice(j, 0, snapPt(at, e.ctrlKey || e.metaKey || (snapOn() && !e.altKey)))
               drawLinks()
               placeFloat()
               commit()
@@ -2185,7 +2260,7 @@ export default {
             canvas.setPointerCapture(e.pointerId)
           }
           moved = true
-          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          l.pts[i] = snapPt(toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey || (snapOn() && !ev.altKey))
           drawLinks()
           placeFloat()
         }
@@ -2755,7 +2830,7 @@ export default {
       const KEYS = () => [
         [tt('Блоки', 'Blocks'), [['T', tt('Карточка', 'Card')], ['S', tt('Стикер', 'Sticky note')], ['N', tt('Заметка из хранилища', 'Note from the vault')], ['F', tt('Рамка', 'Frame')], [tt('Двойной щелчок', 'Double click'), tt('Карточка в этом месте', 'A card at this place')], ['Enter', tt('Править текст / открыть', 'Edit the text / open')]]],
         [tt('Инструменты', 'Tools'), [['V', tt('Выбор', 'Select')], ['H', tt('Рука', 'Hand')], ['A', tt('Стрелка', 'Arrow')], [tt('Пробел + перетаскивание', 'Space + drag'), tt('Двигать поле', 'Move the field')], ['Esc', tt('Снять выделение, выйти из инструмента', 'Clear the choice, leave the tool')]]],
-        [tt('Правка', 'Editing'), [['Ctrl+Z / Ctrl+Y', tt('Отменить / повторить', 'Undo / redo')], ['Ctrl+C / X / V', tt('Копировать / вырезать / вставить', 'Copy / cut / paste')], ['Ctrl+Shift+D', tt('Дублировать', 'Duplicate')], ['Ctrl+G', tt('Обернуть в рамку', 'Wrap in a frame')], ['Delete', tt('Удалить', 'Delete')], [tt('Стрелки', 'Arrow keys'), tt('Сдвинуть на шаг сетки (Shift — крупно, Alt — на пиксель)', 'Move by a step of the grid (Shift: big, Alt: a pixel)')], ['Tab', tt('К следующему блоку', 'To the next block')], [tt('Ctrl + перетаскивание', 'Ctrl + drag'), tt('По точкам сетки', 'On the dots of the grid')], [tt('Alt + перетаскивание', 'Alt + drag'), tt('Копия блока', 'A copy of the block')]]],
+        [tt('Правка', 'Editing'), [['Ctrl+Z / Ctrl+Y', tt('Отменить / повторить', 'Undo / redo')], ['Ctrl+C / X / V', tt('Копировать / вырезать / вставить', 'Copy / cut / paste')], ['Ctrl+Shift+D', tt('Дублировать', 'Duplicate')], ['Ctrl+G', tt('Обернуть в рамку', 'Wrap in a frame')], ['Delete', tt('Удалить', 'Delete')], [tt('Стрелки', 'Arrow keys'), tt('Сдвинуть на шаг сетки (Shift — крупно, Alt — на пиксель)', 'Move by a step of the grid (Shift: big, Alt: a pixel)')], ['Tab', tt('К следующему блоку', 'To the next block')], [tt('Ctrl + перетаскивание', 'Ctrl + drag'), tt('Угол и размер — ровно по сетке', 'The corner and the size even on the grid')], [tt('Alt во время перетаскивания', 'Alt while dragging'), tt('Без привязки к сетке', 'Without snapping to the grid')], [tt('Alt + перетаскивание', 'Alt + drag'), tt('Копия блока', 'A copy of the block')]]],
         [tt('Вид', 'View'), [[tt('Колесо', 'Wheel'), tt('Прокрутка (Shift — вбок)', 'Scroll (Shift: sideways)')], [tt('Ctrl + колесо', 'Ctrl + wheel'), tt('Масштаб', 'Zoom')], ['Shift+1', tt('Вписать всё', 'Fit everything')], ['Shift+2', tt('К выделенному', 'To the selection')], ['Shift+0', '100%'], ['Ctrl+F', tt('Найти на доске', 'Find on the board')], ['?', tt('Это окно', 'This window')]]]
       ]
       const showKeys = () => {
@@ -2793,7 +2868,7 @@ export default {
             { label: tt('Без сетки', 'None'), checked: board.settings.grid === 'none', action: () => setSetting('grid', 'none') }
           ]
         },
-        { label: tt('Прилипать к сетке', 'Snap to the grid'), checked: !!board.settings.snapGrid, action: () => setSetting('snapGrid', !board.settings.snapGrid) },
+        { label: tt('Привязка к сетке', 'Snap to the grid'), hint: tt('Alt — без неё', 'Alt: without'), checked: snapOn(), action: () => setSnap(!snapOn()) },
         { label: tt('Направляющие по краям карточек', 'Guides to the edges of cards'), checked: board.settings.guides !== false, action: () => setSetting('guides', board.settings.guides === false) },
         { label: tt('Мини-карта', 'Minimap'), checked: !miniBox.hidden, action: () => setSetting('minimap', miniBox.hidden) }
       ]
@@ -2881,12 +2956,41 @@ export default {
        * A new board, made at once under the default name ("Untitled", "Untitled 1"...) in this folder (the root of the
        * vault by default), opened with its name ready to be typed over - or left as it is.
        */
-      const createBoard = async (dir = '') => {
+      /**
+       * A board made under the default name and not touched since (its file is empty): it goes away by itself when the
+       * user leaves it without doing anything on it (closes the tab, goes to another tab or board).
+       */
+      let untouched = null
+      const makeDefault = async (dir = '') => {
         if (dir && !(await api.vault.exists(dir))) await files.folder(dir)
         const next = freeBoardPath(defaultName(), dir)
         // (a new board under the name of one that was renamed or deleted: its hint is shown again)
         forgetHint(next)
-        await api.vault.write(next, serialize(nameOf(next), newBoard()), true)
+        // (an empty file is an empty board; only an empty file can be taken back without the recycle bin)
+        await api.vault.write(next, '', true)
+        toBottom(next)
+        untouched = next
+        return next
+      }
+      /** The board made and left untouched is taken away (true when it was). */
+      const dropUntouched = async () => {
+        const p = untouched
+        untouched = null
+        if (!p || p !== path || !board || board.cards.length) return false
+        try {
+          // (Syntex removes only a file that is still empty: nothing written is ever lost by this)
+          if (sx?.fs?.discard) await sx.fs.discard(p)
+          else await files.trash(p)
+        } catch {
+          return false
+        }
+        forgetHint(p)
+        return true
+      }
+      const createBoard = async (dir = '') => {
+        // (the empty board made on entering, left untouched, gives way to the new one: no second "Untitled")
+        if (untouched && untouched === path) await dropUntouched()
+        const next = await makeDefault(dir)
         await new Promise((r) => setTimeout(r, 200))
         fillSelect()
         await openPath(next)
@@ -2894,6 +2998,22 @@ export default {
         select.value = next
         editTitle()
         return next
+      }
+      /** Boards entered with none yet: a board under the default name is made at once (as in Obsidian). */
+      let entering = false
+      const enterEmpty = async () => {
+        if (entering || path || (board && board.cards.length)) return
+        entering = true
+        try {
+          const next = await makeDefault()
+          await new Promise((r) => setTimeout(r, 200))
+          fillSelect()
+          await openPath(next)
+          fillSelect()
+          select.value = next
+        } finally {
+          entering = false
+        }
       }
       const boardMenu = () => [
         { label: tt('Новая доска', 'New board'), action: () => void createBoard() },
@@ -3423,20 +3543,23 @@ export default {
         if (fresh0 && board.cards.length && !broken) requestAnimationFrame(() => board && canvas.clientWidth && fit())
         if (broken) hint.replaceChildren(tt('Данные доски повреждены, доска не изменяется: исправьте её файл .board или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its .board file or make a new board.'))
         else {
-          // one line and the three blocks most begun with; the rest is in "⋯ → Keys"
-          const big = (ico, label, act) => {
-            const b = el('button', { className: 'bd-hint-btn' }, [icon(ico), el('span', { textContent: label })])
-            b.onclick = act
-            return b
-          }
-          hint.replaceChildren(
-            el('div', { className: 'bd-hint-line', textContent: tt('Перетащите блок с панели внизу или дважды щёлкните по полю', 'Drag a block from the panel below or double click the field') }),
-            el('div', { className: 'bd-hint-btns' }, [
-              big('card', tt('Карточка', 'Card'), () => addCard({ type: 'text' }, null)),
-              big('note', tt('Заметка из хранилища', 'Note from the vault'), () => pickNote(null)),
-              big('media', tt('Картинка', 'Picture'), () => pickFile(null))
-            ])
-          )
+          // a short guide, as in Obsidian: how to begin and how to move about (the mouse goes through it)
+          const lines = wheelZooms()
+            ? [
+                tt('Перетащите блок снизу или дважды щёлкните', 'Drag a block from below or double click'),
+                tt('Пробел + перетаскивание — двигать поле', 'Space + drag to move the field'),
+                tt('Колесо — масштаб', 'The wheel zooms'),
+                tt('Стрелка: потяните от кружка на краю блока', 'An arrow: drag from the dot on the edge of a block'),
+                tt('? — все горячие клавиши', '? for all the keys')
+              ]
+            : [
+                tt('Перетащите блок снизу или дважды щёлкните', 'Drag a block from below or double click'),
+                tt('Пробел + перетаскивание — двигать поле', 'Space + drag to move the field'),
+                tt('Ctrl + колесо — масштаб', 'Ctrl + wheel to zoom'),
+                tt('Стрелка: потяните от кружка на краю блока', 'An arrow: drag from the dot on the edge of a block'),
+                tt('? — все горячие клавиши', '? for all the keys')
+              ]
+          hint.replaceChildren(...lines.map((t) => el('div', { className: 'bd-hint-line', textContent: t })))
         }
         hint.classList.toggle('bad', broken)
         syncHint()
@@ -3448,6 +3571,8 @@ export default {
 
       const openPath = async (next) => {
         if (editing) root.querySelector('.bd-edit')?.blur()
+        // (going to another board from the one made on entering and left untouched: that one goes away)
+        if (untouched && untouched === path && next !== path) await dropUntouched()
         await write()
         path = next
         draftName = ''
@@ -3482,12 +3607,13 @@ export default {
       const dockItem = (id, ico, label, key, rest) => ({ id, ico, label, key, ...rest })
       const shapeItem = (s) => ({ id: 'shape-' + s.id, shape: s.id, label: tt(s.ru, s.en), props: { type: 'shape', shape: s.id } })
       const BLOCKS = [
-        dockItem('text', 'card', tt('Карточка', 'Card'), 'T', { props: { type: 'text' } }),
-        dockItem('sticky', 'sticky', tt('Стикер', 'Sticky'), 'S', { props: { type: 'sticky', color: STICKY } }),
-        dockItem('todo', 'todo', tt('Чек-лист', 'Checklist'), '', { props: { type: 'todo', text: '[ ] ' }, rare: true }),
-        dockItem('note', 'note', tt('Заметка', 'Note'), 'N', { pick: 'note', long: tt('Заметка из хранилища', 'Note from the vault') }),
-        dockItem('media', 'media', tt('Файл', 'File'), '', { pick: 'file', long: tt('Картинка или файл', 'Picture or file') }),
-        dockItem('frame', 'frame', tt('Рамка', 'Frame'), 'F', { props: { type: 'frame', text: '' }, rare: true })
+        // (`acc`: what the hint says is added: "Drag to add a card")
+        dockItem('text', 'card', tt('Карточка', 'Card'), 'T', { props: { type: 'text' }, acc: tt('карточку', 'a card') }),
+        dockItem('sticky', 'sticky', tt('Стикер', 'Sticky'), 'S', { props: { type: 'sticky', color: STICKY }, acc: tt('стикер', 'a sticky note') }),
+        dockItem('todo', 'todo', tt('Чек-лист', 'Checklist'), '', { props: { type: 'todo', text: '[ ] ' }, rare: true, acc: tt('чек-лист', 'a check list') }),
+        dockItem('note', 'note', tt('Заметка', 'Note'), 'N', { pick: 'note', long: tt('Заметка из хранилища', 'Note from the vault'), acc: tt('заметку из хранилища', 'a note from the vault') }),
+        dockItem('media', 'media', tt('Файл', 'File'), '', { pick: 'file', long: tt('Картинка или файл', 'Picture or file'), acc: tt('картинку или файл', 'a picture or a file') }),
+        dockItem('frame', 'frame', tt('Рамка', 'Frame'), 'F', { props: { type: 'frame', text: '' }, rare: true, acc: tt('рамку', 'a frame') })
       ]
       let lastShape = SHAPES.some((s) => s.id === data().lastShape) ? data().lastShape : 'rect'
       /** What a thing of the dock makes, put with its middle at `at` (null: a free place in the view). */
@@ -3540,7 +3666,7 @@ export default {
           const r = canvas.getBoundingClientRect()
           const k = board.view.k
           let p = toWorld(ev.clientX, ev.clientY)
-          if (ev.ctrlKey || ev.metaKey) {
+          if (ev.ctrlKey || ev.metaKey || (snapOn() && !ev.altKey)) {
             // (on the dots: where the card will be put)
             const c = snapPt({ x: p.x - w / 2, y: p.y - h / 2 }, true)
             p = { x: c.x + w / 2, y: c.y + h / 2 }
@@ -3558,48 +3684,72 @@ export default {
           if (fromPanel) toggleShapes(false)
           if (ev.type === 'pointercancel') return
           if (!dragging) dropDock(real, null, false)
-          else if (over(ev)) dropDock(real, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          else if (over(ev)) dropDock(real, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey || (snapOn() && !ev.altKey))
         }
         b.addEventListener('pointermove', move)
         b.addEventListener('pointerup', up)
         b.addEventListener('pointercancel', up)
       }
-      const tipOf = (item, how = tt('перетащите на доску или щёлкните', 'drag it onto the board or click')) => `${item.long ?? item.label}${item.key ? ` (${item.key})` : ''} — ${how}`
-      /** A button of the dock: its icon with its name under it (the names go when the dock is narrow). */
-      const toolButton = (kind, ico, label, tip) => {
-        const b = el('button', { className: 'bd-dock-btn', title: tip })
+      /** What the hint over a button of the dock says: "Drag to add a card · T". */
+      const tipOf = (item) => tt('Перетащить, чтобы добавить ', 'Drag to add ') + (item.acc ?? item.label) + (item.key ? ` · ${item.key}` : '')
+      // the hint over the button under the mouse (the icon is raised a little, as it is in the rail of Syntex)
+      const dockTip = el('div', { className: 'bd-tip', hidden: true })
+      canvas.append(dockTip)
+      const showTip = (b) => {
+        if (!b.dataset.hint || ghost.hidden === false) return
+        dockTip.textContent = b.dataset.hint
+        dockTip.hidden = false
+        const r = canvas.getBoundingClientRect()
+        const q = b.getBoundingClientRect()
+        const w = dockTip.offsetWidth
+        dockTip.style.left = clamp(q.left + q.width / 2 - r.left - w / 2, 6, Math.max(6, r.width - w - 6)) + 'px'
+        // (held by its bottom, 10 px over the button: it never lands on the dock, whatever its height comes out)
+        dockTip.style.top = 'auto'
+        dockTip.style.bottom = r.bottom - q.top + 10 + 'px'
+      }
+      const hideTip = () => (dockTip.hidden = true)
+      // (a press anywhere, or the wheel, takes the hint away)
+      canvas.addEventListener('pointerdown', hideTip, true)
+      canvas.addEventListener('wheel', hideTip, { capture: true, passive: true })
+      /** A button of the dock: its icon only; what it does is said by the hint over it. */
+      const toolButton = (kind, ico, tip) => {
+        const b = el('button', { className: 'bd-dock-btn' })
         b.dataset.kind = kind
-        b.append(typeof ico === 'string' ? icon(ico) : ico, el('span', { className: 'bd-dock-label', textContent: label }))
+        b.dataset.hint = tip
+        b.append(typeof ico === 'string' ? (DOCK_ICONS[ico] ? dockIcon(ico) : icon(ico)) : ico)
+        b.addEventListener('pointerenter', () => showTip(b))
+        b.addEventListener('pointerleave', hideTip)
+        b.addEventListener('pointerdown', hideTip)
         return b
       }
       const blockButton = (item) => {
-        const b = toolButton(item.id, item.shape ? shapeIcon(item.shape) : item.ico, item.label, tipOf(item))
+        const b = toolButton(item.id, item.shape ? shapeIcon(item.shape) : item.ico, tipOf(item))
         if (item.rare) b.classList.add('bd-rare')
         b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
         return b
       }
       const rowButton = (item) => {
-        const b = el('button', { className: 'bd-dock-btn bd-shape-row', title: tipOf(item) })
+        const b = el('button', { className: 'bd-dock-btn bd-shape-row' })
         b.dataset.kind = item.id
         b.append(item.shape ? shapeIcon(item.shape) : icon(item.ico), el('span', { textContent: item.long ?? item.label }))
         b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
         return b
       }
       const modeButton = (t, ico, label, key, tip) => {
-        const b = toolButton('tool-' + t, ico, label, `${tip} (${key})`)
+        const b = toolButton('tool-' + t, ico, `${label} — ${tip} · ${key}`)
         b.classList.add('bd-mode')
         b.addEventListener('pointerdown', (e) => e.stopPropagation())
         b.onclick = () => board && !broken && setTool(tool === t && t !== 'select' ? 'select' : t)
         return b
       }
-      const selectTool = modeButton('select', 'pointer', tt('Выбор', 'Select'), 'V', tt('Выбор: выделять и двигать блоки', 'Select: choose and move blocks'))
-      const handTool = modeButton('hand', 'hand', tt('Рука', 'Hand'), 'H', tt('Рука: двигать поле (или пробел + перетаскивание)', 'Hand: move the field (or Space + drag)'))
-      const arrowTool = modeButton('arrow', 'arrow', tt('Стрелка', 'Arrow'), 'A', tt('Стрелка: потяните от блока к блоку', 'Arrow: drag from one block to another'))
+      const selectTool = modeButton('select', 'pointer', tt('Выбор', 'Select'), 'V', tt('выделять и двигать блоки', 'choose and move blocks'))
+      const handTool = modeButton('hand', 'hand', tt('Рука', 'Hand'), 'H', tt('двигать поле', 'move the field'))
+      const arrowTool = modeButton('arrow', 'arrow', tt('Стрелка', 'Arrow'), 'A', tt('потяните от блока к блоку', 'drag from one block to another'))
       const lastItem = { id: 'shape-last', label: tt('Фигура', 'Shape') }
-      const shapeMain = toolButton('shape-last', shapeIcon(lastShape), tt('Фигура', 'Shape'), '')
+      const shapeMain = toolButton('shape-last', shapeIcon(lastShape), '')
       shapeMain.addEventListener('pointerdown', (e) => dockDown(e, lastItem, shapeMain))
-      const shapesBtn = el('button', { className: 'bd-dock-btn bd-dock-more', title: tt('Все фигуры блок-схем', 'All the flowchart shapes') }, [icon('chevronUp')])
-      shapesBtn.dataset.kind = 'shapes'
+      const shapesBtn = toolButton('shapes', 'chevronUp', tt('Все фигуры блок-схем', 'All the flowchart shapes'))
+      shapesBtn.classList.add('bd-dock-more')
       shapesBtn.addEventListener('pointerdown', (e) => e.stopPropagation())
       shapesBtn.addEventListener('click', () => board && !broken && toggleShapes())
       const sep = () => el('span', { className: 'bd-dock-sep' })
@@ -3608,7 +3758,7 @@ export default {
       const syncDock = () => {
         for (const [t, b] of [['select', selectTool], ['hand', handTool], ['arrow', arrowTool]]) b.classList.toggle('on', tool === t)
         const s = SHAPES.find((x) => x.id === lastShape)
-        shapeMain.title = tipOf({ label: tt(s.ru, s.en) }) + tt('. Другие фигуры — стрелка рядом', '. Other shapes: the arrow next to it')
+        shapeMain.dataset.hint = tipOf({ acc: tt(`фигуру «${s.ru}»`, `the shape "${s.en}"`) })
         shapeMain.firstChild.replaceWith(shapeIcon(lastShape))
       }
       shapesPanel.append(
@@ -3635,8 +3785,23 @@ export default {
         canvas.classList.toggle('bd-compact', w < 980)
         canvas.classList.toggle('bd-tiny', w < 700)
         // (the panel over the chosen block and the map follow the new size of the field)
-        if (board) applyView()
+        if (board && w) applyView()
+        // the tab of the boards hidden (another tab in front) or shown again: a board made on entering and left
+        // untouched goes away; boards entered again with none make it again
+        const shown = w > 0
+        if (shown === wasShown) return
+        wasShown = shown
+        // (after the first board is opened, and a moment later: the tab may be only passing by)
+        setTimeout(() => {
+          void (initDone ?? Promise.resolve()).then(() => {
+            if (wasShown !== shown) return
+            if (!shown && untouched && untouched === path) void dropUntouched().then((gone) => gone && openPath('').then(() => fillSelect()))
+            else if (shown && !path && !boardPaths().length) void enterEmpty()
+          })
+        }, 0)
       }
+      let wasShown = false
+      let initDone = null
       const resizeWatch = new ResizeObserver(fitDock)
       resizeWatch.observe(canvas)
 
@@ -3667,6 +3832,8 @@ export default {
       }
       const renameTo = async (raw) => {
         const name = cleanName(raw)
+        // (a board given a name of its own is kept, empty or not)
+        if (path && name && name !== nameOf(path) && untouched === path) untouched = null
         if (!path) {
           // (a board not written yet takes the name when it is)
           if (name) draftName = name
@@ -3721,6 +3888,7 @@ export default {
             lastWritten = text
             written.push(text)
             await api.vault.write(next, text, true)
+            toBottom(next)
             path = next
             draftName = ''
             syncHint()
@@ -3828,7 +3996,11 @@ export default {
       const last = data().last
       const first = pendingOpen && paths.includes(pendingOpen) ? pendingOpen : paths.includes(last) ? last : paths[0] ?? ''
       pendingOpen = null
-      void openPath(first).then(() => fillSelect())
+      // (no boards yet: one is made at once, as in Obsidian; it goes away if it is left untouched)
+      initDone = openPath(first).then(() => {
+        fillSelect()
+        if (!first && canvas.clientWidth > 0) return enterEmpty()
+      })
       const onResize = () => (board ? (applyView(), undefined) : undefined)
       window.addEventListener('resize', onResize)
 
@@ -3837,6 +4009,8 @@ export default {
         resizeWatch.disconnect()
         clearTimeout(keyTimer)
         cancelAnimationFrame(miniFrame)
+        // (the tab closed: the board made on entering and left untouched goes with it)
+        void dropUntouched()
         void write()
         if (controller) controller = null
       }
@@ -4175,13 +4349,10 @@ export default {
         border: 1px solid var(--accent); background: var(--bg-app); color: var(--text); font: inherit; font-size: 13px; text-align: center; outline: none; }
 
       /* the empty board */
-      .bd-hint { padding: 18px 22px; color: var(--text-2); background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 8px 24px rgb(0 0 0 / .18); white-space: normal; line-height: 1.4; }
-      .bd-hint-line { margin-bottom: 14px; }
-      .bd-hint-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-      .bd-hint-btn { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 132px; padding: 14px 8px; border-radius: 10px; border: 1px solid var(--border-2); color: var(--text); font-size: 13px; background: var(--bg-app); }
-      .bd-hint-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-app)); }
-      .bd-hint-btn .bd-ico { width: 24px; height: 24px; margin: 0; }
-      .bd-canvas.bd-tiny .bd-hint-btn { width: 100px; padding: 10px 6px; }
+      /* the hint of an empty board: a short guide in the colour of the accent, as in Obsidian; the mouse goes through it */
+      .bd-hint { padding: 16px 26px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 0; box-shadow: none; border-radius: 8px; white-space: nowrap; font-size: 15px; line-height: 1.9; pointer-events: none; }
+      .bd-hint.bad { white-space: normal; color: var(--text-2); background: var(--float-bg); }
+      .bd-canvas.bd-tiny .bd-hint { font-size: 13px; white-space: normal; }
 
       /* the keys */
       .bd-keys { padding: 16px 18px; max-width: min(720px, calc(100vw - 40px)); }
@@ -4230,6 +4401,56 @@ export default {
       .bd-card.locked > .bd-rs { display: none; }
       .bd-port { z-index: 3; }
       .t-frame .bd-rs { pointer-events: auto; }
+
+      /* ---- 1.5.1: the dock as the rail of Syntex: icons only (40 px buttons, icons of 18 px, lines of 1.5 px); the
+         icon under the mouse is raised and a hint over it says what it does ---- */
+      .bd-dock { gap: 2px; padding: 4px; }
+      .bd-dock-label { display: none !important; }
+      .bd-dock .bd-dock-btn, .bd-canvas.bd-compact .bd-dock .bd-dock-btn { width: 40px; min-width: 40px; height: 40px; padding: 0; border-radius: 8px; color: var(--text-3); transition: background .1s, color .1s; }
+      .bd-dock .bd-dock-btn:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-dock .bd-dock-btn > svg { transition: transform .14s ease-out; }
+      .bd-dock .bd-dock-btn:hover > svg { transform: translateY(-3px); }
+      .bd-dock .bd-dock-btn:active > svg { transform: translateY(-1px); }
+      .bd-dock .bd-dock-btn .bd-ico { width: 18px; height: 18px; }
+      .bd-dock .bd-dock-btn .bd-ico path, .bd-dock .bd-dock-shape path { vector-effect: non-scaling-stroke; stroke-width: 1.5px; }
+      .bd-dock .bd-dock-btn .bd-ico.bd-ico-dots path { stroke-width: 3px; }
+      .bd-dock .bd-dock-shape { height: 16px; width: auto; max-width: 26px; }
+      .bd-dock .bd-dock-btn.on { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+      .bd-dock .bd-dock-btn.bd-dock-more, .bd-canvas.bd-compact .bd-dock .bd-dock-btn.bd-dock-more { width: 20px; min-width: 20px; }
+      .bd-dock .bd-dock-btn.bd-dock-more .bd-ico { width: 14px; height: 14px; }
+      .bd-dock .bd-dock-btn.bd-dock-more:hover > svg { transform: translateY(-2px); }
+      .bd-dock-sep { height: 24px; margin: 0 4px; }
+      .bd-tip { position: absolute; z-index: 13; padding: 6px 10px; border-radius: 7px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 18px rgb(0 0 0 / .3);
+        color: var(--text); font-size: 12.5px; white-space: nowrap; pointer-events: none; animation: bd-tip-in .12s ease-out; }
+      @keyframes bd-tip-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+      .bd-canvas.bd-tiny .bd-dock { bottom: 56px; }
+      .bd-canvas.bd-tiny .bd-shapes { bottom: 108px; }
+      .bd-shapes { bottom: 70px; }
+      /* (a narrow field: the dock goes up over the zoom, so the open map goes up over the dock) */
+      .bd-canvas.bd-tiny .bd-minibox:not(.folded) { bottom: 108px; }
+
+      /* ---- 1.5.2: the icons of the dock big and bold, in the middle of their buttons; no background under the mouse
+         or on the tool in use: the icon itself rises under the mouse, and is brighter (white) when it is the one in use ---- */
+      .bd-dock .bd-dock-btn, .bd-canvas.bd-compact .bd-dock .bd-dock-btn { display: grid; place-items: center; padding: 0; background: none !important; box-shadow: none; }
+      .bd-dock .bd-dock-btn:active { transform: none; }
+      .bd-dock .bd-dock-btn > svg { display: block; margin: 0; }
+      .bd-dico { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+      .bd-dico path { stroke-width: 1.75px; vector-effect: non-scaling-stroke; }
+      .bd-dock .bd-dock-shape { height: 18px; max-width: 30px; }
+      .bd-dock .bd-dock-shape path { stroke-width: 1.75px; }
+      .bd-dock .bd-dock-btn { color: var(--text-3); }
+      .bd-dock .bd-dock-btn:hover { color: var(--text-2); }
+      .bd-dock .bd-dock-btn:hover > svg { transform: translateY(-4px); }
+      .bd-dock .bd-dock-btn:active > svg { transform: translateY(-2px); }
+      .bd-dock .bd-dock-btn.on, .bd-dock .bd-dock-btn.on:hover { color: var(--text); }
+      .bd-dock .bd-dock-btn.on .bd-dico path { stroke-width: 2px; }
+      .bd-dock .bd-dock-btn.bd-dock-more .bd-dico { width: 16px; height: 16px; }
+      .bd-dock .bd-dock-btn.bd-dock-more:hover > svg { transform: translateY(-3px); }
+      :root[data-theme='dark'] .bd-dock .bd-dock-btn.on { color: #fff; }
+
+      /* the snapping to the grid at the bottom left, by the zoom */
+      .bd-zoombox .bd-snap { color: var(--text-3); }
+      .bd-zoombox .bd-snap.on { color: var(--text); }
     `)
   }
 }
