@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: карточки, стикеры, заметки с превью, картинки и любые файлы из дерева, ссылки, чек-листы, рамки и 13 фигур блок-схем (процесс, решение, начало/конец, данные, документ, база данных…) — перетаскиваются с панели внизу. Стрелки держатся за стороны блоков, у них бывают точки изгиба (потяните линию), подписи и ломаный вид. Ctrl при перетаскивании ставит блоки на точки сетки. Доска — файл .board, создаётся сам, как только на поле что-то положили; имя меняется в заголовке. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: cards, sticky notes, notes with a preview, pictures and any files from the tree, links, check lists, frames and 13 flowchart shapes (process, decision, start/end, data, document, database…) dragged from the panel at the bottom. Arrows hold on to the sides of blocks and have bend points (drag the line), labels and an elbow style. Ctrl while dragging puts blocks on the dots of the grid. A board is a .board file made by itself the moment something is put on the field; its name is edited in its title. Ctrl+Alt+B opens it."
       },
-      "version": "1.4.1",
+      "version": "1.5.0",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "e26cac9eb4dc7a073f6ecd7c9540a67e44c5f0ad98241a4d00922b20e9d1164e",
-        "main.js": "f649298dd56182bec49cafaa256bab8d96bd777371f1eefbad3e63e9c903ec0c"
+        "manifest.json": "7927f82865f9a362a736970681db57640a97b5dd52d9e0c78ed6f5bf8e8c404a",
+        "main.js": "d5330f93e072a5d6089e669f5fbaf45228cd558a983b3920b14f35ba0ee8bae5"
       }
     },
     {
