@@ -3353,6 +3353,8 @@ export default {
           return
         }
         if (e.target.closest('.bd-end')) return
+        // (the hand only moves the board: no block made by it either)
+        if (tool === 'hand' || spaceDown) return
         addCard({ type: 'text' }, toWorld(e.clientX, e.clientY), true, e.ctrlKey || e.metaKey)
       })
 
@@ -3553,25 +3555,44 @@ export default {
           else if (code === 'KeyF') addCard({ type: 'frame', text: '' }, here)
           else if (code === 'KeyN') pickNote(here)
           else if (code === 'KeyA' && sel.size === 1) startArrowMode(selected()[0])
-          else if (code === 'KeyA' || code === 'KeyC') setTool(tool === 'arrow' ? 'select' : 'arrow')
-          else if (code === 'KeyH') setTool('hand')
-          else if (code === 'KeyV') setTool('select')
+          else if (code === 'KeyA' || code === 'KeyC') toolByKey(tool === 'arrow' ? 'select' : 'arrow')
+          else if (code === 'KeyH') toolByKey('hand')
+          else if (code === 'KeyV') toolByKey('select')
         }
       })
       let keyTimer = null
       root.addEventListener('keyup', (e) => {
         if (e.code === 'Space') {
           spaceDown = false
-          canvas.classList.remove('hand')
+          canvas.classList.toggle('hand', tool === 'hand')
         }
       })
       const setTool = (t) => {
         tool = t
-        canvas.classList.toggle('hand', t === 'hand')
+        canvas.classList.toggle('hand', t === 'hand' || spaceDown)
         canvas.classList.toggle('arrow-tool', t === 'arrow')
         if (t === 'arrow' && sel.size) setSel([])
         syncToolbar()
       }
+      // a tool taken by a key (H, A, C: by the place of the key, so «р», «ф», «с» on the Russian layout too) says so: in
+      // the hand a click no longer selects, and that must not look like the board stopped answering
+      const toolByKey = (t) => {
+        if (t === tool) return
+        setTool(t)
+        if (t === 'hand') api.ui.notice(tt('Рука: мышь двигает доску, блоки не выбираются. V или Esc — снова выбор', 'Hand: the mouse moves the board, blocks are not selected. V or Esc: back to selecting'), 4000)
+        else if (t === 'arrow') api.ui.notice(tt('Стрелки: тяните от блока к блоку. V или Esc — снова выбор', 'Arrows: drag from a block to a block. V or Esc: back to selecting'), 4000)
+      }
+      // the space let go where the board did not hear it (the window left, a dialog came up): the hand of the space
+      // never stays on by itself
+      const releaseSpace = () => {
+        if (!spaceDown) return
+        spaceDown = false
+        canvas.classList.toggle('hand', tool === 'hand')
+      }
+      window.addEventListener('blur', releaseSpace)
+      root.addEventListener('focusout', (e) => {
+        if (!root.contains(e.relatedTarget)) releaseSpace()
+      })
 
       /* ---------- loading a board ---------- */
       const show = (text) => {
@@ -4059,6 +4080,7 @@ export default {
 
       return () => {
         window.removeEventListener('resize', onResize)
+        window.removeEventListener('blur', releaseSpace)
         resizeWatch.disconnect()
         clearTimeout(keyTimer)
         cancelAnimationFrame(miniFrame)
