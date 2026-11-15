@@ -10,7 +10,7 @@
         "ru": "Доска во вкладке: карточки, стикеры, заметки с превью, картинки и любые файлы из дерева, ссылки, чек-листы, рамки и 13 фигур блок-схем (процесс, решение, начало/конец, данные, документ, база данных…) — перетаскиваются с панели внизу. Стрелки держатся за стороны блоков, у них бывают точки изгиба (потяните линию), подписи и ломаный вид. Блоки встают на точки сетки (привязку можно выключить). Доска — файл .board, создаётся сам, как только на поле что-то положили; имя меняется в заголовке. Ctrl+Alt+B — открыть.",
         "en": "A board in a tab: cards, sticky notes, notes with a preview, pictures and any files from the tree, links, check lists, frames and 13 flowchart shapes (process, decision, start/end, data, document, database…) dragged from the panel at the bottom. Arrows hold on to the sides of blocks and have bend points (drag the line), labels and an elbow style. Blocks snap to the dots of the grid (the snapping can be turned off). A board is a .board file made by itself the moment something is put on the field; its name is edited in its title. Ctrl+Alt+B opens it."
       },
-      "version": "1.5.3",
+      "version": "1.5.4",
       "author": "Syntex",
       "minApi": 8,
       "path": "boards",
@@ -19,8 +19,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "2cac3677cbfb33a7f776ba1088bda25497b37ed8d14718c68ae38603a05b3e95",
-        "main.js": "f53ceead77fbfbf5bbe0cbf595b21b7be60663ada95eef37fa6b62440be5dde5"
+        "manifest.json": "39b6ed51278ac0814de50ab2516d680cb122e6ebdd29864935871196d6230a88",
+        "main.js": "364824ca13ddf6d4f5eb6f023fa5ed29ba38babc34843ab6a9ba8afe4d2c8609"
       }
     },
     {
@@ -30,10 +30,10 @@
         "en": "Canvas import"
       },
       "description": {
-        "ru": "Открывает доски JSON Canvas (.canvas, как в Obsidian) в «Интерактивной доске»: клик по .canvas в дереве делает рядом доску .board и открывает её, сам .canvas не меняется. Текст, заметки, картинки, ссылки, группы (рамки) и стрелки с подписями и цветами переносятся. Меню файла: «Конвертировать в доску», для папки — все .canvas в ней, для доски — «Сохранить как .canvas». Нужен аддон «Интерактивная доска».",
-        "en": "Opens JSON Canvas boards (.canvas, as in Obsidian) in the Interactive board: a click on a .canvas in the tree makes a .board next to it and opens it; the .canvas itself is left as it is. Text, notes, pictures, links, groups (frames) and arrows with their labels and colours come over. File menu: \"Convert to a board\", for a folder every .canvas in it, for a board \"Save as .canvas\". Needs the Interactive board add-on."
+        "ru": "Открывает доски JSON Canvas (.canvas, как в Obsidian) в «Интерактивной доске»: клик по .canvas в дереве делает рядом доску .board и открывает её, сам .canvas не меняется. Текст, заметки, картинки, файлы (PDF и другие), ссылки, группы (рамки) и стрелки — с подписями, цветами и сторонами — переносятся; что перенести нельзя, показывается списком. Меню файла: «Конвертировать в доску», для папки — все .canvas в ней, для доски — «Сохранить как .canvas». Нужен аддон «Интерактивная доска».",
+        "en": "Opens JSON Canvas boards (.canvas, as in Obsidian) in the Interactive board: a click on a .canvas in the tree makes a .board next to it and opens it; the .canvas itself is left as it is. Text, notes, pictures, files (PDF and others), links, groups (frames) and arrows with their labels, colours and sides come over; what cannot is shown in a list. File menu: \"Convert to a board\", for a folder every .canvas in it, for a board \"Save as .canvas\". Needs the Interactive board add-on."
       },
-      "version": "1.0.2",
+      "version": "1.1.0",
       "author": "Syntex",
       "minApi": 8,
       "path": "canvas-import",
@@ -42,8 +42,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "2d160d8d23b5b8ed380f1efb976c02691f576c57d36cce189f71b1228e0385c0",
-        "main.js": "aec66c33023a015ed6ae43a79e9ed0ffb187bca28a5ec9cf3a9daa598b28ad0d"
+        "manifest.json": "7466bf94d44828e8710166fee986ca1e7a4dcbb9ad23215161a6e8f6a3ecb4cb",
+        "main.js": "c625a81d432697c7373d9cba4d8c1efd848ecbb6e74a299e649125f0fe4faa0f"
       }
     },
     {
