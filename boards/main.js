@@ -456,6 +456,8 @@ export default {
       const written = []
       let sel = new Set()
       let selLink = null
+      // the bend point chosen by a click ({ link, i }): Delete takes it away
+      let selBend = null
       let editing = null
       let tool = 'select'
       let spaceDown = false
@@ -941,12 +943,14 @@ export default {
           if (selLink === l.id && !sel.size) {
             // the handles of the chosen arrow: its two ends (dragged to another side or card) and its bend points
             const k = board.view.k
-            for (const [end, p] of [['from', r.A], ['to', r.B]]) {
-              handleLayer.append(svgEl('circle', { cx: p.x, cy: p.y, r: 5.5 / k, class: 'bd-end', 'data-link': l.id, 'data-end': end, 'stroke-width': 2 / k }))
+            // (each handle is a small circle seen, in a bigger one not seen that takes the mouse: easy to catch)
+            const handle = (cls, p, r0, attrs) => {
+              const g = svgEl('g', { class: cls, 'data-link': l.id, ...attrs })
+              g.append(svgEl('circle', { cx: p.x, cy: p.y, r: 13 / k, class: 'bd-catch' }), svgEl('circle', { cx: p.x, cy: p.y, r: r0 / k, class: 'bd-dot', 'stroke-width': 2 / k }))
+              handleLayer.append(g)
             }
-            ;(l.pts ?? []).forEach((p, i) => {
-              handleLayer.append(svgEl('circle', { cx: p.x, cy: p.y, r: 5 / k, class: 'bd-wp', 'data-link': l.id, 'data-i': i, 'stroke-width': 2 / k }))
-            })
+            for (const [end, p] of [['from', r.A], ['to', r.B]]) handle('bd-end', p, 5.5, { 'data-end': end })
+            ;(l.pts ?? []).forEach((p, i) => handle('bd-wp' + (selBend && selBend.link === l.id && selBend.i === i ? ' on' : ''), p, 5.5, { 'data-i': i }))
           }
         }
       }
@@ -1221,6 +1225,7 @@ export default {
       /* ---------- selection ---------- */
       const setSel = (ids, link = null) => {
         sel = new Set(ids)
+        if (link !== selLink || sel.size) selBend = null
         selLink = link
         refreshSel()
       }
@@ -1316,7 +1321,12 @@ export default {
             floatBar.hidden = true
             return
           }
-          box = { x: mid.x - 1, y: mid.y - 14, w: 2, h: 28 }
+          // (over the whole arrow, not its middle: the panel must never cover its bend points or its ends)
+          const route = routeOf(l)
+          const xs = route ? [...route.line.map((p) => p.x), mid.x] : [mid.x]
+          const ys = route ? [...route.line.map((p) => p.y), mid.y] : [mid.y]
+          const pad = 12 / board.view.k
+          box = { x: Math.min(...xs) - pad, y: Math.min(...ys) - pad, w: Math.max(...xs) - Math.min(...xs) + 2 * pad, h: Math.max(...ys) - Math.min(...ys) + 2 * pad }
           floatBar.append(
             floatBtn('dash', tt('Вид линии', 'Line style'), (e) => menuAtButton(e, lineItems(l))),
             floatBtn('ends', tt('Концы', 'Ends'), (e) => menuAtButton(e, endItems(l))),
@@ -2251,7 +2261,10 @@ export default {
         canvas.addEventListener('pointercancel', up)
       }
       /** A bend point dragged (Ctrl: on the dots of the grid). */
-      const bendDown = (e, l, i) => {
+      const bendDown = (e, l, i, node) => {
+        // (the point is chosen at once, without drawing the arrow again: a double click on it must still reach it)
+        selBend = { link: l.id, i }
+        for (const g of handleLayer.querySelectorAll('.bd-wp')) g.classList.toggle('on', g === node)
         let moved = false
         const move = (ev) => {
           if (!moved) {
@@ -2275,6 +2288,7 @@ export default {
         canvas.addEventListener('pointercancel', up)
       }
       const removeBend = (l, i) => {
+        selBend = null
         if (!l.pts?.[i]) return
         l.pts = l.pts.filter((_, j) => j !== i)
         if (!l.pts.length) delete l.pts
@@ -3194,7 +3208,7 @@ export default {
           e.stopPropagation()
           const l = board.links.find((x) => x.id === handle.dataset.link)
           if (!l) return
-          if (handle.classList.contains('bd-wp')) bendDown(e, l, Number(handle.dataset.i))
+          if (handle.classList.contains('bd-wp')) bendDown(e, l, Number(handle.dataset.i), handle)
           else endDown(e, l, handle.dataset.end)
           return
         }
@@ -3328,6 +3342,20 @@ export default {
         if (broken) return
         const at = toWorld(e.clientX, e.clientY)
         mouse = at
+        // the menu of a bend point: take it away, or all of them
+        const wpEl = e.target.closest('.bd-wp')
+        if (wpEl) {
+          const l = board.links.find((x) => x.id === wpEl.dataset.link)
+          if (!l) return
+          const i = Number(wpEl.dataset.i)
+          selBend = { link: l.id, i }
+          for (const g of handleLayer.querySelectorAll('.bd-wp')) g.classList.toggle('on', g === wpEl)
+          showMenu(e.clientX, e.clientY, [
+            { label: tt('Убрать точку', 'Remove the point'), hint: tt('Del · двойной щелчок', 'Del · double click'), action: () => removeBend(l, i) },
+            { label: tt('Убрать все точки изгиба', 'Remove all the bend points'), action: () => clearBends(l) }
+          ])
+          return
+        }
         const node = e.target.closest('.bd-card')
         const linkEl = e.target.closest('.bd-link')
         if (node) {
@@ -3454,7 +3482,10 @@ export default {
           zoom100()
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault()
-          removeSelected()
+          // a bend point chosen: only it goes; otherwise what is chosen
+          const bl = selBend && selLink === selBend.link && board.links.find((x) => x.id === selBend.link)
+          if (bl && bl.pts?.[selBend.i]) removeBend(bl, selBend.i)
+          else removeSelected()
         } else if (e.key === 'Escape') {
           if (!shapesPanel.hidden) toggleShapes(false)
           else if (arrowMode) stopArrowMode()
@@ -4194,6 +4225,11 @@ export default {
       .bd-handles { pointer-events: none; z-index: 4; }
       .bd-wp, .bd-end { pointer-events: all; cursor: move; fill: var(--bg-app); stroke: var(--accent); }
       .bd-end { fill: var(--accent); stroke: var(--bg-app); cursor: crosshair; }
+      /* (the unseen circle around a handle that takes the mouse) */
+      .bd-handles .bd-catch { fill: transparent; stroke: none; }
+      .bd-wp:hover .bd-dot { fill: color-mix(in srgb, var(--accent) 35%, var(--bg-app)); }
+      .bd-wp.on .bd-dot { fill: var(--accent); stroke: var(--bg-app); }
+      .bd-end:hover .bd-dot { stroke: var(--accent); }
       .bd-line { stroke-linejoin: round; }
       .bd-dock { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 2px; padding: 5px; max-width: calc(100% - 420px); overflow-x: auto; scrollbar-width: none;
         border-radius: 11px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 6px 20px rgb(0 0 0 / .3); }
