@@ -8,7 +8,7 @@
     "ru": "Доска во вкладке: карточки, стикеры, заметки с превью, картинки и любые файлы из дерева, ссылки, чек-листы, рамки и 13 фигур блок-схем (процесс, решение, начало/конец, данные, документ, база данных…) — перетаскиваются с панели внизу. Стрелки держатся за стороны блоков, у них бывают точки изгиба (потяните линию), подписи и ломаный вид. Блоки встают на точки сетки (привязку можно выключить). Доска — файл .board, создаётся сам, как только на поле что-то положили; имя меняется в заголовке. Ctrl+Alt+B — открыть.",
     "en": "A board in a tab: cards, sticky notes, notes with a preview, pictures and any files from the tree, links, check lists, frames and 13 flowchart shapes (process, decision, start/end, data, document, database…) dragged from the panel at the bottom. Arrows hold on to the sides of blocks and have bend points (drag the line), labels and an elbow style. Blocks snap to the dots of the grid (the snapping can be turned off). A board is a .board file made by itself the moment something is put on the field; its name is edited in its title. Ctrl+Alt+B opens it."
   },
-  "version": "1.5.3",
+  "version": "1.5.4",
   "author": "Syntex",
   "minApi": 8
 }

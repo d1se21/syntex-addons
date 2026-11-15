@@ -670,6 +670,8 @@ export default {
       const applyView = () => {
         const { x, y, k } = board.view
         world.style.transform = `translate(${x}px, ${y}px) scale(${k})`
+        // (the handles of the cards and the line of an arrow keep their size on the screen at any zoom: see --ik)
+        world.style.setProperty('--ik', String(1 / k))
         canvas.dataset.grid = board.settings.grid
         // the grid follows the zoom: when the cells get too small on the screen, every next
         // step takes twice as many of them, so far away there is no dense mesh
@@ -3747,6 +3749,8 @@ export default {
         const b = el('button', { className: 'bd-dock-btn' })
         b.dataset.kind = kind
         b.dataset.hint = tip
+        // (the hint is drawn by the board; reading aloud needs the name on the button itself)
+        b.setAttribute('aria-label', tip)
         b.append(typeof ico === 'string' ? (DOCK_ICONS[ico] ? dockIcon(ico) : icon(ico)) : ico)
         b.addEventListener('pointerenter', () => showTip(b))
         b.addEventListener('pointerleave', hideTip)
@@ -4130,6 +4134,7 @@ export default {
       /* (the list of boards: a narrow button with its arrow; the name is in the title before it) */
       .bd-boards { position: relative; flex: none; width: 28px; height: 30px; margin-left: -6px; border-radius: 7px; color: var(--text-3); display: flex; align-items: center; justify-content: center; }
       .bd-boards:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-boards::after { content: ''; position: absolute; inset: -3px -2px; }
       .bd-boards .bd-ico { width: 14px; height: 14px; }
       .bd-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
       .bd-select option { color: var(--text); background: var(--float-bg); }
@@ -4147,7 +4152,7 @@ export default {
       .bd-links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
       .bd-line { stroke: var(--text-3); stroke-width: 2; fill: none; }
       .bd-arrow-head { fill: context-stroke; }
-      .bd-hit { stroke: transparent; stroke-width: 16; fill: none; pointer-events: stroke; cursor: pointer; }
+      .bd-hit { stroke: transparent; stroke-width: calc(26px * var(--ik, 1)); fill: none; pointer-events: stroke; cursor: pointer; }
       .bd-link.on .bd-line { stroke: var(--accent); }
       /* (a label is taken by the mouse and dragged, as in draw.io) */
       .bd-links .bd-label { pointer-events: all; cursor: move; }
@@ -4216,9 +4221,11 @@ export default {
       .bd-edit { width: 100%; height: 100%; resize: none; border: 0; outline: none; background: transparent; color: inherit; font: inherit; line-height: 1.45; user-select: text; padding: 0; }
       .bd-edit-title { height: auto; font-size: 14px; font-weight: 500; background: var(--bg-app); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; position: relative; }
       .t-sticky .bd-edit { color: #1e2127; }
-      .bd-port { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; }
-      .bd-port.p-r { right: -8px; top: 50%; margin-top: -7px; } .bd-port.p-l { left: -8px; top: 50%; margin-top: -7px; }
-      .bd-port.p-t { top: -8px; left: 50%; margin-left: -7px; } .bd-port.p-b { bottom: -8px; left: 50%; margin-left: -7px; }
+      .bd-port { position: absolute; width: calc(14px * var(--ik, 1)); height: calc(14px * var(--ik, 1)); border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; }
+      .bd-port.p-r { right: calc(-8px * var(--ik, 1)); top: 50%; margin-top: calc(-7px * var(--ik, 1)); } .bd-port.p-l { left: calc(-8px * var(--ik, 1)); top: 50%; margin-top: calc(-7px * var(--ik, 1)); }
+      .bd-port.p-t { top: calc(-8px * var(--ik, 1)); left: 50%; margin-left: calc(-7px * var(--ik, 1)); } .bd-port.p-b { bottom: calc(-8px * var(--ik, 1)); left: 50%; margin-left: calc(-7px * var(--ik, 1)); }
+      /* (an unseen ring around a dot that takes the mouse) */
+      .bd-port::after { content: ''; position: absolute; inset: calc(-7px * var(--ik, 1)); border-radius: 50%; }
       .bd-card:hover .bd-port, .bd-card.on .bd-port, .bd-card.target .bd-port { opacity: 1; }
       .bd-card.target .bd-port { background: var(--text-3); }
       .bd-card.target.s-top .p-t, .bd-card.target.s-right .p-r, .bd-card.target.s-bottom .p-b, .bd-card.target.s-left .p-l { background: var(--accent); transform: scale(1.35); }
@@ -4378,6 +4385,8 @@ export default {
       /* the panel of what is chosen */
       .bd-float { gap: 1px; padding: 3px; border-radius: 9px; }
       .bd-fbtn { width: 28px; min-width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+      .bd-fbtn { position: relative; }
+      .bd-fbtn::after { content: ''; position: absolute; inset: -3px -1px; }
       .bd-fbtn .bd-ico { width: 16px; height: 16px; }
       .bd-fbtn.off { opacity: .35; }
       .bd-fsep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); }
@@ -4424,13 +4433,14 @@ export default {
       /* eight handles of the size */
       .bd-grip { background: none; opacity: 1; }
       .bd-rs { position: absolute; z-index: 2; }
-      .bd-rs-n, .bd-rs-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
-      .bd-rs-n { top: -4px; } .bd-rs-s { bottom: -4px; }
-      .bd-rs-e, .bd-rs-w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
-      .bd-rs-e { right: -4px; } .bd-rs-w { left: -4px; }
-      .bd-rs-nw, .bd-rs-ne, .bd-rs-sw, .bd-rs-se { width: 10px; height: 10px; box-sizing: border-box; border-radius: 2px; background: var(--bg-app); border: 1.5px solid var(--accent); opacity: 0; }
-      .bd-rs-nw { left: -5px; top: -5px; cursor: nwse-resize; } .bd-rs-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
-      .bd-rs-ne { right: -5px; top: -5px; cursor: nesw-resize; } .bd-rs-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+      .bd-rs-n, .bd-rs-s { left: calc(12px * var(--ik, 1)); right: calc(12px * var(--ik, 1)); height: calc(10px * var(--ik, 1)); cursor: ns-resize; }
+      .bd-rs-n { top: calc(-5px * var(--ik, 1)); } .bd-rs-s { bottom: calc(-5px * var(--ik, 1)); }
+      .bd-rs-e, .bd-rs-w { top: calc(12px * var(--ik, 1)); bottom: calc(12px * var(--ik, 1)); width: calc(10px * var(--ik, 1)); cursor: ew-resize; }
+      .bd-rs-e { right: calc(-5px * var(--ik, 1)); } .bd-rs-w { left: calc(-5px * var(--ik, 1)); }
+      .bd-rs-nw, .bd-rs-ne, .bd-rs-sw, .bd-rs-se { width: calc(10px * var(--ik, 1)); height: calc(10px * var(--ik, 1)); box-sizing: border-box; border-radius: calc(2px * var(--ik, 1)); background: var(--bg-app); border: calc(1.5px * var(--ik, 1)) solid var(--accent); opacity: 0; }
+      .bd-rs-nw::after, .bd-rs-ne::after, .bd-rs-sw::after, .bd-rs-se::after { content: ''; position: absolute; inset: calc(-9px * var(--ik, 1)); }
+      .bd-rs-nw { left: calc(-5px * var(--ik, 1)); top: calc(-5px * var(--ik, 1)); cursor: nwse-resize; } .bd-rs-se { right: calc(-5px * var(--ik, 1)); bottom: calc(-5px * var(--ik, 1)); cursor: nwse-resize; }
+      .bd-rs-ne { right: calc(-5px * var(--ik, 1)); top: calc(-5px * var(--ik, 1)); cursor: nesw-resize; } .bd-rs-sw { left: calc(-5px * var(--ik, 1)); bottom: calc(-5px * var(--ik, 1)); cursor: nesw-resize; }
       .bd-card.on > .bd-rs { opacity: 1; }
       .bd-card:not(.on) > .bd-rs:not(.bd-rs-se) { pointer-events: none; }
       .bd-card:hover > .bd-rs-se { opacity: .6; }
