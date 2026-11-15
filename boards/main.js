@@ -153,6 +153,18 @@ const ICONS = {
   grid: 'M5 5h.01M12 5h.01M19 5h.01M5 12h.01M12 12h.01M19 12h.01M5 19h.01M12 19h.01M19 19h.01',
   chevron: 'M6 9l6 6 6-6',
   chevronUp: 'M7 14l5-5 5 5',
+  pointer: 'M6 3.5l12.5 7.5-5.5 1.6-2.6 5.4z',
+  map: 'M3 6.5l6-2 6 2 6-2v13l-6 2-6-2-6 2zM9 4.5v13M15 6.5v13',
+  open: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+  textsize: 'M3.5 18L8 6l4.5 12M5 14h6M14.5 18l3-8 3 8M15.6 15.5h3.8',
+  realsize: 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6',
+  align: 'M4 4v16M8 7h12M8 12h7M8 17h10',
+  distribute: 'M4 4v16M20 4v16M9.5 7h5v10h-5z',
+  samesize: 'M4 6h7v6H4zM13 6h7v6h-7zM4 16h16',
+  curve: 'M4 18C11 18 13 6 20 6',
+  ends: 'M5 12h14M15 8l4 4-4 4M9 8l-4 4 4 4',
+  keys: 'M3 7h18v10H3zM7 10.5h.01M11 10.5h.01M15 10.5h.01M8 14h8',
+  name: 'M4 7V5h16v2M12 5v14M9 19h6',
   shapes: 'M4 4h7v7H4zM17.5 4a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7M7.5 13.5l3.5 6.5H4zM17.5 13l3.5 3.5-3.5 3.5-3.5-3.5z',
   plus: 'M12 5v14M5 12h14'
 }
@@ -235,6 +247,14 @@ const sideNear = (c, p) => {
   const d = { top: Math.abs(p.y - r.y), bottom: Math.abs(p.y - r.y - r.h), left: Math.abs(p.x - r.x), right: Math.abs(p.x - r.x - r.w) }
   return SIDES.reduce((best, s) => (d[s] < d[best] ? s : best), 'top')
 }
+/** The side of a card that faces a point outside it (by the direction from its middle, its shape taken in). */
+const sideToward = (c, p) => {
+  const r = rectOf(c)
+  const dx = (p.x - r.x - r.w / 2) / (r.w / 2 || 1)
+  const dy = (p.y - r.y - r.h / 2) / (r.h / 2 || 1)
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left'
+  return dy > 0 ? 'bottom' : 'top'
+}
 /** The point where an arrow is fastened to the side of a card (on the outline of a shape), and the way out of it. */
 const anchorOf = (c, side) => {
   const r = rectOf(c)
@@ -279,6 +299,9 @@ function normalize(b) {
         out.pts = out.pts.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).map((p) => ({ x: p.x, y: p.y }))
         if (!out.pts.length) delete out.pts
       } else delete out.pts
+      // (where the label was dragged to: a share of the length and a shift)
+      if (!Number.isFinite(out.lt)) delete out.lt
+      if (!out.lo || !Number.isFinite(out.lo.x) || !Number.isFinite(out.lo.y)) delete out.lo
       return out
     })
   const view = b.view && Number.isFinite(b.view.k) && Number.isFinite(b.view.x) && Number.isFinite(b.view.y) ? b.view : { x: 0, y: 0, k: 1 }
@@ -411,9 +434,10 @@ export default {
       const notes = new Map() // vault path -> { title, excerpt }
 
       /* ---------- the frame of the tab ---------- */
-      const select = el('select', { className: 'bd-select' })
-      // (the list of boards: an arrow button; the list itself is the select, unseen over it)
-      const selectWrap = el('span', { className: 'bd-boards' }, [icon('chevron'), select])
+      // (the list of boards is a menu of the arrow by the title; the select stays, unseen, as the list of record)
+      const select = el('select', { className: 'bd-select', hidden: true })
+      const selectWrap = el('button', { className: 'bd-boards', title: tt('Доски', 'Boards') }, [icon('chevron')])
+      selectWrap.onclick = (e) => menuAtButton(e, boardsList())
       const btn = (label, onclick, title = '', cls = '') =>
         el('button', { className: 'btn bd-btn ' + cls, onclick, title }, ICONS[label] ? [icon(label)] : [document.createTextNode(label)])
       const toolbar = el('div', { className: 'bd-toolbar' })
@@ -435,22 +459,60 @@ export default {
       world.append(frameLayer, links, cardLayer, handleLayer, guides)
       const band = el('div', { className: 'bd-band', hidden: true })
       const hint = el('div', { className: 'bd-hint' })
+      /**
+       * The hint of an empty board: shown until the first block is put on that board, then never again on it (a board
+       * emptied later shows a clean field).
+       */
+      const syncHint = () => {
+        if (!board) return
+        if (broken) {
+          hint.hidden = false
+          return
+        }
+        const seen = data().hintsDone ?? []
+        if (board.cards.length && path && !seen.includes(path)) api.data.set({ ...data(), hintsDone: [...seen, path].slice(-400) })
+        hint.hidden = board.cards.length > 0 || (!!path && seen.includes(path))
+      }
+      const forgetHint = (p) => {
+        const seen = data().hintsDone ?? []
+        if (seen.includes(p)) api.data.set({ ...data(), hintsDone: seen.filter((x) => x !== p) })
+      }
+      /** The boards whose hint is gone, with a board that came under a new name. */
+      const movedHints = (d, was, next) => (d.hintsDone ?? []).map((x) => (x === was ? next : x))
       const floatBar = el('div', { className: 'bd-float', hidden: true })
-      const zoomLabel = el('button', { className: 'bd-zoom-label', title: '100%' })
+      // bottom left: the history and the zoom
+      const zoomLabel = el('button', { className: 'bd-zoom-label', title: tt('Масштаб', 'Zoom') })
+      zoomLabel.onclick = (e) => board && menuAtButton(e, zoomMenu(), true)
+      const undoBtn = el('button', { className: 'bd-undo', title: tt('Отменить (Ctrl+Z)', 'Undo (Ctrl+Z)'), onclick: () => undo() }, [icon('undo')])
+      const redoBtn = el('button', { className: 'bd-redo', title: tt('Повторить (Ctrl+Y)', 'Redo (Ctrl+Y)'), onclick: () => redo() }, [icon('redo')])
       const zoomBox = el('div', { className: 'bd-zoombox' }, [
-        el('button', { textContent: '−', title: tt('Уменьшить', 'Zoom out'), onclick: () => zoomBy(1 / 1.25) }),
+        undoBtn,
+        redoBtn,
+        el('span', { className: 'bd-zoom-sep' }),
+        el('button', { textContent: '−', title: tt('Уменьшить (Ctrl+−)', 'Zoom out (Ctrl+−)'), onclick: () => zoomBy(1 / 1.25) }),
         zoomLabel,
-        el('button', { textContent: '+', title: tt('Увеличить', 'Zoom in'), onclick: () => zoomBy(1.25) }),
-        el('button', { title: tt('Вписать всё (Shift+1)', 'Fit everything (Shift+1)'), onclick: () => fit() }, [icon('fit')])
+        el('button', { textContent: '+', title: tt('Увеличить (Ctrl+=)', 'Zoom in (Ctrl+=)'), onclick: () => zoomBy(1.25) })
       ])
+      // bottom right: the minimap, folded into a button when asked (remembered), unseen when everything is in view
       const mini = el('canvas', { className: 'bd-mini', width: 180, height: 120 })
+      const miniFold = el('button', { className: 'bd-mini-fold', title: tt('Свернуть мини-карту', 'Fold the minimap') }, [icon('chevron')])
+      const miniOpen = el('button', { className: 'bd-mini-open', title: tt('Мини-карта', 'Minimap') }, [icon('map')])
+      const miniBox = el('div', { className: 'bd-minibox' }, [mini, miniFold, miniOpen])
+      const setMiniFolded = (on) => {
+        miniBox.classList.toggle('folded', on)
+        api.data.set({ ...data(), miniFolded: on })
+        drawMini()
+      }
+      miniFold.onclick = () => setMiniFolded(true)
+      miniOpen.onclick = () => setMiniFolded(false)
+      miniBox.classList.toggle('folded', !!data().miniFolded)
       const searchBox = el('div', { className: 'bd-search', hidden: true })
       const searchInput = el('input', { placeholder: tt('Найти на доске…', 'Find on the board…'), spellcheck: false })
       const searchCount = el('span', { className: 'bd-search-count' })
       searchBox.append(searchInput, searchCount, el('button', { textContent: '×', onclick: () => closeSearch() }))
       const dock = el('div', { className: 'bd-dock' })
       const ghost = el('div', { className: 'bd-ghost', hidden: true })
-      canvas.append(world, band, hint, floatBar, zoomBox, mini, searchBox, dock, ghost)
+      canvas.append(world, band, hint, floatBar, zoomBox, miniBox, searchBox, dock, ghost)
       root.append(toolbar, canvas)
       canvas.dataset.dropFiles = ''
 
@@ -475,6 +537,7 @@ export default {
         if (written.length > 12) written.shift()
         try {
           await api.vault.write(path, text, true)
+          flashSaved()
         } catch (e) {
           dirty = true
           api.ui.notice(e instanceof Error ? e.message : String(e), 6000)
@@ -553,6 +616,7 @@ export default {
         const half = board.settings.grid === 'dots' ? step / 2 : 0
         canvas.style.backgroundPosition = `${x - half}px ${y - half}px`
         zoomLabel.textContent = Math.round(k * 100) + '%'
+        miniBox.hidden = board.settings.minimap === false
         if (selLink) drawLinks()
         placeFloat()
         drawMini()
@@ -694,23 +758,71 @@ export default {
           for (const s of segs) for (let k = 1; k <= 16; k++) line.push(bez(s[0], s[1], s[2], s[3], k / 16))
         } else {
           line = l.elbow ? elbowPoints(A, B, pts) : ctrl
-          d = 'M' + line.map((p) => `${p.x} ${p.y}`).join('L')
+          // (the corners are rounded a little, unless "Rounded corners" is turned off for this arrow)
+          d = l.sharp ? 'M' + line.map((p) => `${p.x} ${p.y}`).join('L') : roundedD(line)
         }
-        // the middle of its length, for the label
+        // where its label is: a share of its length (the middle by default) and a shift from the line
+        const at = along(line, Number.isFinite(l.lt) ? l.lt : 0.5)
+        const mid = { x: at.x + (l.lo?.x ?? 0), y: at.y + (l.lo?.y ?? 0) }
+        return { d, line, ctrl, mid, A, B }
+      }
+      /** A line through these points with its corners rounded (by up to 10, less where the pieces are short). */
+      const roundedD = (pts, r0 = 10) => {
+        let d = `M${pts[0].x} ${pts[0].y}`
+        for (let i = 1; i < pts.length - 1; i++) {
+          const p = pts[i - 1]
+          const c = pts[i]
+          const n = pts[i + 1]
+          const l1 = Math.hypot(c.x - p.x, c.y - p.y)
+          const l2 = Math.hypot(n.x - c.x, n.y - c.y)
+          const r = Math.min(r0, l1 / 2, l2 / 2)
+          if (r < 0.5) {
+            d += `L${c.x} ${c.y}`
+            continue
+          }
+          const a = { x: c.x + ((p.x - c.x) * r) / l1, y: c.y + ((p.y - c.y) * r) / l1 }
+          const b = { x: c.x + ((n.x - c.x) * r) / l2, y: c.y + ((n.y - c.y) * r) / l2 }
+          d += `L${a.x} ${a.y}Q${c.x} ${c.y} ${b.x} ${b.y}`
+        }
+        const z = pts[pts.length - 1]
+        return d + `L${z.x} ${z.y}`
+      }
+      /** The point at this share (0..1) of the length of a line of points. */
+      const along = (line, t) => {
         let total = 0
         for (let i = 1; i < line.length; i++) total += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y)
-        let mid = line[0]
+        const want = total * clamp(t, 0, 1)
         let walked = 0
         for (let i = 1; i < line.length; i++) {
           const seg = Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y)
-          if (walked + seg >= total / 2) {
-            const t = seg ? (total / 2 - walked) / seg : 0
-            mid = { x: line[i - 1].x + (line[i].x - line[i - 1].x) * t, y: line[i - 1].y + (line[i].y - line[i - 1].y) * t }
-            break
+          if (walked + seg >= want) {
+            const f = seg ? (want - walked) / seg : 0
+            return { x: line[i - 1].x + (line[i].x - line[i - 1].x) * f, y: line[i - 1].y + (line[i].y - line[i - 1].y) * f }
           }
           walked += seg
         }
-        return { d, line, ctrl, mid, A, B }
+        return line[line.length - 1]
+      }
+      /** The share of the length of a line of points where it comes nearest to `p`, and that point. */
+      const nearestOn = (line, p) => {
+        let total = 0
+        let best = { t: 0.5, x: line[0].x, y: line[0].y, d: Infinity }
+        const lens = []
+        for (let i = 1; i < line.length; i++) lens.push(Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y))
+        const all = lens.reduce((a, b) => a + b, 0) || 1
+        for (let i = 1; i < line.length; i++) {
+          const a = line[i - 1]
+          const b = line[i]
+          const dx = b.x - a.x
+          const dy = b.y - a.y
+          const len2 = dx * dx + dy * dy
+          const f = len2 ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0, 1) : 0
+          const q = { x: a.x + dx * f, y: a.y + dy * f }
+          const dd = Math.hypot(p.x - q.x, p.y - q.y)
+          if (dd < best.d) best = { t: (total + lens[i - 1] * f) / all, x: q.x, y: q.y, d: dd }
+          total += lens[i - 1]
+        }
+        return best
       }
       const distToSeg = (p, a, b) => {
         const dx = b.x - a.x
@@ -805,6 +917,67 @@ export default {
         for (const c of board?.cards ?? []) if (c.type === 'note' && c.note === p) renderCard(c)
       }
 
+      /* ---------- the text of a card, shown formatted (its Markdown is seen only while it is edited) ---------- */
+      const noteFor = (target) => {
+        const t = target.trim().toLowerCase()
+        const all = api.vault.list()
+        return all.find((p) => p.toLowerCase() === t || p.toLowerCase() === t + '.md') ?? all.find((p) => nameOf(p).toLowerCase() === t.replace(/\.md$/, '')) ?? null
+      }
+      // (a link in a card works by a click and is no handle to drag the card by)
+      const linkEl = (text, go, cls) => {
+        const a = el('a', { className: cls, textContent: text, href: '#' })
+        a.onpointerdown = (e) => e.stopPropagation()
+        a.ondblclick = (e) => e.stopPropagation()
+        a.onclick = (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          go()
+        }
+        return a
+      }
+      const INLINE = /(\*\*|__)(.+?)\1|~~(.+?)~~|==(.+?)==|`([^`]+)`|\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)\s]+)\)|(?<![\w*])\*(?!\s)(.+?)\*(?!\w)|(?<![\w_])_(?!\s)(.+?)_(?!\w)|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/
+      /** A line of Markdown as DOM: bold, italic, struck, marked, code, [[links]], [links](…) and bare addresses. */
+      const mdInline = (text) => {
+        const frag = document.createDocumentFragment()
+        let rest = text
+        for (let guard = 0; rest && guard < 200; guard++) {
+          const m = INLINE.exec(rest)
+          if (!m) break
+          if (m.index) frag.append(rest.slice(0, m.index))
+          if (m[2] !== undefined) frag.append(el('strong', {}, [mdInline(m[2])]))
+          else if (m[3] !== undefined) frag.append(el('s', {}, [mdInline(m[3])]))
+          else if (m[4] !== undefined) frag.append(el('mark', {}, [mdInline(m[4])]))
+          else if (m[5] !== undefined) frag.append(el('code', { textContent: m[5] }))
+          else if (m[6] !== undefined) {
+            const target = m[6].split('#')[0]
+            const found = noteFor(target)
+            frag.append(linkEl(m[7] ?? m[6], () => (found ? api.vault.open(found) : api.ui.notice(tt(`Заметки «${target}» нет`, `No note "${target}"`))), 'bd-wikilink' + (found ? '' : ' gone')))
+          } else if (m[8] !== undefined) frag.append(linkEl(m[8], () => window.open(normUrl(m[9])), 'bd-weblink'))
+          else if (m[10] !== undefined) frag.append(el('em', {}, [mdInline(m[10])]))
+          else if (m[11] !== undefined) frag.append(el('em', {}, [mdInline(m[11])]))
+          else if (m[12] !== undefined) frag.append(linkEl(m[12], () => window.open(m[12]), 'bd-weblink'))
+          rest = rest.slice(m.index + m[0].length)
+        }
+        if (rest) frag.append(rest)
+        return frag
+      }
+      /** The text of a card as formatted lines: headings, lists, tasks, quotes. */
+      const md = (text) => {
+        const box = el('div', { className: 'bd-text bd-md' })
+        for (const line of text.split('\n')) {
+          let m
+          if ((m = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line))) box.append(el('div', { className: 'bd-md-h bd-md-h' + Math.min(3, m[1].length) }, [mdInline(m[2])]))
+          else if ((m = /^(\s*)[-*+]\s+\[( |x|X)\]\s+(.*)$/.exec(line)))
+            box.append(el('div', { className: 'bd-md-li bd-md-task' + (m[2] === ' ' ? '' : ' done') }, [el('span', { className: 'bd-md-box', textContent: m[2] === ' ' ? '☐' : '☑' }), el('span', {}, [mdInline(m[3])])]))
+          else if ((m = /^(\s*)[-*+]\s+(.*)$/.exec(line))) box.append(el('div', { className: 'bd-md-li' }, [el('span', { className: 'bd-md-dot', textContent: '•' }), el('span', {}, [mdInline(m[2])])]))
+          else if ((m = /^(\s*)(\d+)[.)]\s+(.*)$/.exec(line))) box.append(el('div', { className: 'bd-md-li' }, [el('span', { className: 'bd-md-dot', textContent: m[2] + '.' }), el('span', {}, [mdInline(m[3])])]))
+          else if ((m = /^>\s?(.*)$/.exec(line))) box.append(el('div', { className: 'bd-md-quote' }, [mdInline(m[1])]))
+          else if (!line.trim()) box.append(el('div', { className: 'bd-md-gap' }))
+          else box.append(el('div', {}, [mdInline(line)]))
+        }
+        return box
+      }
+
       const shapeSvg = (card) => {
         const s = sizeOf(card)
         const svg = svgEl('svg', { class: 'bd-shape-svg', viewBox: `0 0 ${s.w} ${s.h}`, preserveAspectRatio: 'none' })
@@ -836,11 +1009,11 @@ export default {
         const fs = FONTS[clamp((card.fs ?? 1) | 0, 0, 3)]
         body.style.fontSize = fs + 'px'
         if (card.type === 'text' || card.type === 'sticky') {
-          body.append(el('div', { className: 'bd-text', textContent: card.text ?? '' }))
+          body.append(md(card.text ?? ''))
         } else if (card.type === 'shape') {
           const s = sizeOf(card)
           const [t, r, b, l] = shapeInset(card.shape ?? 'rect', s.w, s.h)
-          const text = el('div', { className: 'bd-shape-text' }, [el('div', { className: 'bd-text', textContent: card.text ?? '' })])
+          const text = el('div', { className: 'bd-shape-text' }, [md(card.text ?? '')])
           text.style.padding = `${t}px ${r}px ${b}px ${l}px`
           body.append(shapeSvg(card), text)
         } else if (card.type === 'file') {
@@ -864,7 +1037,7 @@ export default {
         } else if (card.type === 'note') {
           const info = notes.get(card.note)
           const ok = !info?.gone && api.vault.list().includes(card.note)
-          const open = el('button', { className: 'bd-open', title: tt('Открыть заметку', 'Open the note'), textContent: '↗' })
+          const open = el('button', { className: 'bd-open', title: tt('Открыть заметку (Enter)', 'Open the note (Enter)') }, [icon('open'), el('span', { textContent: tt('Открыть', 'Open') })])
           open.onpointerdown = (e) => e.stopPropagation()
           open.onclick = () => ok && api.vault.open(card.note)
           body.append(
@@ -899,7 +1072,7 @@ export default {
               commit()
               renderCard(card)
             }
-            list.append(el('label', { className: 'bd-todo-row' + (done ? ' done' : '') }, [box, el('span', { textContent: m ? m[2] : line })]))
+            list.append(el('label', { className: 'bd-todo-row' + (done ? ' done' : '') }, [box, el('span', {}, [mdInline(m ? m[2] : line)])]))
           })
           if (!card.text) list.append(el('div', { className: 'bd-todo-empty', textContent: tt('Двойной клик — добавить пункты', 'Double click to add items') }))
           body.append(list)
@@ -932,9 +1105,13 @@ export default {
           port.addEventListener('pointerdown', (e) => portDown(e, card, port))
           node.append(port)
         }
-        const grip = el('div', { className: 'bd-grip' })
-        grip.addEventListener('pointerdown', (e) => gripDown(e, card, grip))
-        node.append(grip)
+        // eight handles of the size, on the corners and the sides (seen on a chosen card; the corner at the bottom
+        // right also when the mouse is over it)
+        for (const dir of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+          const grip = el('div', { className: 'bd-rs bd-rs-' + dir + (dir === 'se' ? ' bd-grip' : '') })
+          grip.addEventListener('pointerdown', (e) => gripDown(e, card, grip, dir))
+          node.append(grip)
+        }
         node.addEventListener('pointerdown', (e) => cardDown(e, card, node))
         node.addEventListener('dblclick', (e) => {
           e.stopPropagation()
@@ -959,7 +1136,7 @@ export default {
         for (const c of board.cards) makeCard(c)
         drawLinks()
         refreshSel()
-        hint.hidden = board.cards.length > 0 && !broken
+        syncHint()
         drawMini()
         // (an undo or a new board: what is found is looked for again)
         if (!searchBox.hidden) runSearch(false)
@@ -991,7 +1168,23 @@ export default {
         drawMini()
       }
 
-      const floatBtn = (name, title, onclick) => el('button', { className: 'bd-fbtn', title, onclick }, [icon(name)])
+      const floatBtn = (name, title, onclick, cls = '') => {
+        const b = el('button', { className: 'bd-fbtn ' + cls, title, onclick }, [icon(name)])
+        b.dataset.act = name
+        return b
+      }
+      const colorBtn = (items, current) => {
+        const sw = el('button', { className: 'bd-fbtn bd-fcolor', title: tt('Цвет', 'Colour') })
+        sw.dataset.act = 'color'
+        sw.style.setProperty('--c', current || 'transparent')
+        sw.onclick = (e) => menuAtButton(e, items)
+        return sw
+      }
+      const fsep = () => el('span', { className: 'bd-fsep' })
+      /**
+       * The panel of what is chosen, over it (under it when there is no room above). What is in it depends on what
+       * is chosen, as in Miro: its look and its main actions; copying, locking, order and deleting are in "⋯".
+       */
       const placeFloat = () => {
         floatBar.replaceChildren()
         const cards = selected()
@@ -999,44 +1192,88 @@ export default {
           floatBar.hidden = true
           return
         }
-        let anchor
-        if (cards.length) {
-          const b = boundsOf(cards)
-          anchor = { x: b.x + b.w / 2, y: b.y }
-          const sw = el('button', { className: 'bd-fbtn bd-fcolor', title: tt('Цвет', 'Colour') })
-          sw.style.setProperty('--c', cards.length === 1 && cards[0].color ? cards[0].color : 'transparent')
-          sw.onclick = (e) => menuAtButton(e, colorMenu(cards))
-          floatBar.append(sw)
-          if (cards.length === 1) floatBar.append(floatBtn('arrow', tt('Стрелка отсюда (A)', 'Arrow from here (A)'), () => startArrowMode(cards[0])))
+        let box
+        const more = (items) => floatBtn('more', tt('Ещё: копировать, закрепить, порядок, удалить…', 'More: copy, lock, order, delete…'), (e) => menuAtButton(e, items()))
+        if (cards.length > 1) {
+          box = boundsOf(cards)
           floatBar.append(
-            floatBtn('copy', tt('Дублировать (Ctrl+Shift+D)', 'Duplicate (Ctrl+Shift+D)'), () => duplicate()),
-            floatBtn(cards.every((c) => c.locked) ? 'unlock' : 'lock', tt('Закрепить / открепить', 'Lock / unlock'), () => toggleLock(cards)),
-            floatBtn('more', tt('Меню', 'Menu'), (e) => menuAtButton(e, cards.length > 1 ? multiMenu() : cardMenu(cards[0]))),
-            floatBtn('trash', tt('Удалить (Delete)', 'Delete (Delete)'), () => removeSelected())
+            floatBtn('align', tt('Выровнять', 'Align'), (e) => menuAtButton(e, arrangeMenu(cards)[0].children)),
+            floatBtn('distribute', tt('Распределить (от трёх блоков)', 'Distribute (three blocks or more)'), (e) => cards.length > 2 && menuAtButton(e, arrangeMenu(cards)[1].children), cards.length > 2 ? '' : 'off'),
+            floatBtn('samesize', tt('Одинаковый размер', 'Same size'), (e) => menuAtButton(e, arrangeMenu(cards)[2].children)),
+            floatBtn('frame', tt('Обернуть в рамку (Ctrl+G)', 'Wrap in a frame (Ctrl+G)'), () => wrapInFrame(cards)),
+            fsep(),
+            colorBtn(colorMenu(cards), ''),
+            more(multiMenu)
           )
+        } else if (cards.length === 1) {
+          const c = cards[0]
+          box = rectOf(c)
+          const one = [c]
+          const color = () => colorBtn(colorMenu(one), c.color || (c.type === 'sticky' ? STICKY : ''))
+          const size = () => floatBtn('textsize', tt('Размер текста', 'Text size'), (e) => menuAtButton(e, fontMenu(one)))
+          const arrow = () => floatBtn('arrow', tt('Стрелка отсюда (A)', 'Arrow from here (A)'), () => startArrowMode(c))
+          const open = (title) => floatBtn('open', title, () => activate(c))
+          const parts = []
+          if (c.type === 'text' || c.type === 'sticky') {
+            parts.push(color(), size())
+            parts.push(
+              c.type === 'text'
+                ? floatBtn('sticky', tt('Превратить в стикер', 'Make it a sticky note'), () => ((c.type = 'sticky'), (c.color ??= STICKY), rebuildOne(c)))
+                : floatBtn('card', tt('Превратить в карточку', 'Make it a plain card'), () => ((c.type = 'text'), rebuildOne(c)))
+            )
+            parts.push(fsep(), arrow())
+          } else if (c.type === 'shape') {
+            parts.push(
+              color(),
+              size(),
+              floatBtn('shapes', tt('Форма', 'Shape'), (e) => menuAtButton(e, SHAPES.map((s) => ({ label: tt(s.ru, s.en), checked: (c.shape ?? 'rect') === s.id, action: () => (setProp(one, 'shape', s.id), redrawShape(c), drawLinks()) })))),
+              fsep(),
+              arrow()
+            )
+          } else if (c.type === 'todo') parts.push(color(), size(), fsep(), arrow())
+          else if (c.type === 'note') parts.push(open(tt('Открыть заметку (Enter)', 'Open the note (Enter)')), color(), fsep(), arrow())
+          else if (c.type === 'image' || c.type === 'file') {
+            parts.push(open(tt('Открыть (Enter)', 'Open (Enter)')))
+            if (c.type === 'image') parts.push(floatBtn('realsize', tt('Исходный размер', 'Original size'), () => realSize(c)))
+            parts.push(fsep(), arrow())
+          } else if (c.type === 'link') {
+            parts.push(open(tt('Открыть в браузере (Enter)', 'Open in the browser (Enter)')), floatBtn('pencil', tt('Изменить адрес', 'Edit the address'), () => void editLinkUrl(c)), fsep(), arrow())
+          } else if (c.type === 'frame') {
+            parts.push(
+              floatBtn('name', tt('Название', 'Name'), () => startEdit(c, 'all')),
+              color(),
+              floatBtn('fit', tt('Подогнать под содержимое', 'Fit to the contents'), () => fitFrame(c), membersOf(c).length ? '' : 'off')
+            )
+          }
+          floatBar.append(...parts, more(() => cardMenu(c)))
         } else {
           const l = board.links.find((x) => x.id === selLink)
-          const a = l && byId(l.from)
-          const b = l && byId(l.to)
-          if (!a || !b) {
+          const mid = l && linkMid.get(l.id)
+          if (!l || !mid) {
             floatBar.hidden = true
             return
           }
-          const m = linkMid.get(l.id) ?? { x: (centerOf(a).x + centerOf(b).x) / 2, y: (centerOf(a).y + centerOf(b).y) / 2 }
-          anchor = { x: m.x, y: m.y - 14 }
+          box = { x: mid.x - 1, y: mid.y - 14, w: 2, h: 28 }
           floatBar.append(
-            floatBtn('pencil', tt('Подпись', 'Label'), () => editLabel(l)),
-            floatBtn('dash', tt('Вид линии', 'Line style'), (e) => menuAtButton(e, linkMenu(l))),
-            floatBtn('reverse', tt('Развернуть', 'Reverse'), () => reverseLink(l)),
-            floatBtn('trash', tt('Удалить', 'Delete'), () => removeSelected())
+            floatBtn('dash', tt('Вид линии', 'Line style'), (e) => menuAtButton(e, lineItems(l))),
+            floatBtn('ends', tt('Концы', 'Ends'), (e) => menuAtButton(e, endItems(l))),
+            floatBtn('curve', tt('Форма: прямая, изогнутая, ломаная', 'Shape: straight, curved, elbow'), (e) => menuAtButton(e, formItems(l))),
+            floatBtn('pencil', tt('Подпись (двойной щелчок по стрелке)', 'Label (double click the arrow)'), () => editLabel(l)),
+            colorBtn([{ colors: { current: l.color, pick: (col) => linkProp(l, 'color', col || undefined) } }], l.color || ''),
+            more(() => linkMenu(l))
           )
         }
         floatBar.hidden = false
         const r = canvas.getBoundingClientRect()
-        const s = toScreen(anchor.x, anchor.y)
-        const w = floatBar.offsetWidth || 160
-        floatBar.style.left = clamp(s.x - r.left - w / 2, 6, Math.max(6, r.width - w - 6)) + 'px'
-        floatBar.style.top = Math.max(6, s.y - r.top - 46) + 'px'
+        const top = toScreen(box.x + box.w / 2, box.y)
+        const bottom = toScreen(box.x + box.w / 2, box.y + box.h)
+        const w = floatBar.offsetWidth || 200
+        const h = floatBar.offsetHeight || 38
+        floatBar.style.left = clamp(top.x - r.left - w / 2, 6, Math.max(6, r.width - w - 6)) + 'px'
+        // over the block; under it when there is no room above; never out of the field
+        const above = top.y - r.top - h - 10
+        const below = bottom.y - r.top + 10
+        floatBar.style.top = clamp(above >= 6 ? above : below, 6, Math.max(6, r.height - h - 70)) + 'px'
       }
 
       /* ---------- creating, copying, deleting ---------- */
@@ -1075,7 +1312,7 @@ export default {
         makeCard(card)
         setSel([card.id])
         commit()
-        hint.hidden = true
+        syncHint()
         if (edit && ['text', 'sticky', 'shape', 'todo', 'frame'].includes(card.type)) {
           fresh.add(card.id)
           startEdit(card)
@@ -1100,7 +1337,7 @@ export default {
         for (const c of copies) makeCard(c)
         for (const f of [...frames].reverse()) frameLayer.prepend(cardEls.get(f.id))
         setSel(copies.map((c) => c.id))
-        hint.hidden = true
+        syncHint()
         if (!quiet) commit()
       }
       const duplicate = () => {
@@ -1242,7 +1479,7 @@ export default {
         selLink = null
         refreshSel()
         commit()
-        hint.hidden = board.cards.length > 0
+        syncHint()
       }
       const removeFrameWithContents = (frame) => {
         const ids = new Set([frame.id, ...membersOf(frame).map((c) => c.id)])
@@ -1286,6 +1523,16 @@ export default {
           }
           field.addEventListener('input', grow)
           grow()
+        } else if (!frame) {
+          // a card grows down with its text while it is typed (never shrinks by itself)
+          field.addEventListener('input', () => {
+            const over = field.scrollHeight - field.clientHeight
+            if (over > 0) {
+              card.h = sizeOf(card).h + over + 4
+              place(card)
+              drawLinks()
+            }
+          })
         }
         field.focus()
         if (target === 'all') field.select()
@@ -1312,7 +1559,7 @@ export default {
             changed()
             syncToolbar()
             placeFloat()
-            hint.hidden = board.cards.length > 0
+            syncHint()
             canvas.focus()
             return
           }
@@ -1341,12 +1588,40 @@ export default {
         }
         field.onpointerdown = (e) => e.stopPropagation()
       }
-      const editLabel = async (l) => {
-        const v = await api.ui.prompt(tt('Подпись стрелки', 'Label of the arrow'), l.label ?? '')
-        if (v === null) return
-        l.label = v.trim() || undefined
-        drawLinks()
-        commit()
+      /** The label of an arrow typed in place, on the middle of the arrow (Enter or a click elsewhere keeps it, Esc not). */
+      const editLabel = (l) => {
+        const mid = linkMid.get(l.id)
+        if (!mid || broken) return
+        root.querySelector('.bd-label-edit')?.blur()
+        const r = canvas.getBoundingClientRect()
+        const s = toScreen(mid.x, mid.y)
+        const input = el('input', { className: 'bd-label-edit', value: l.label ?? '', placeholder: tt('Подпись', 'Label'), spellcheck: false })
+        input.style.left = s.x - r.left + 'px'
+        input.style.top = s.y - r.top + 'px'
+        canvas.append(input)
+        floatBar.hidden = true
+        let over = false
+        const finish = (keep) => {
+          if (over) return
+          over = true
+          input.remove()
+          if (keep && board.links.includes(l) && (input.value.trim() || undefined) !== l.label) {
+            l.label = input.value.trim() || undefined
+            drawLinks()
+            commit()
+          }
+          placeFloat()
+          canvas.focus()
+        }
+        input.onkeydown = (e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') finish(true)
+          else if (e.key === 'Escape') finish(false)
+        }
+        input.onpointerdown = (e) => e.stopPropagation()
+        input.onblur = () => finish(true)
+        input.focus()
+        input.select()
       }
       const reverseLink = (l) => {
         ;[l.from, l.to] = [l.to, l.from]
@@ -1463,6 +1738,10 @@ export default {
         if (spaceDown || tool === 'hand') return // the canvas pans
         e.stopPropagation()
         canvas.focus()
+        if (tool === 'arrow' && !card.locked) {
+          arrowToolDown(e, card, node)
+          return
+        }
         if (e.shiftKey) {
           const next = new Set(sel)
           if (next.has(card.id)) next.delete(card.id)
@@ -1582,33 +1861,48 @@ export default {
         node.addEventListener('pointercancel', up)
       }
 
-      const gripDown = (e, card, grip) => {
+      /**
+       * A handle of a card pulled: its edges follow the mouse (the handles of the corners move two edges, those of the
+       * sides one). A picture keeps its proportions by its corners (Alt frees them). Ctrl: every edge that moves stops
+       * on a dot of the grid, and the corner of the card goes onto the nearest one too.
+       */
+      const gripDown = (e, card, grip, dir = 'se') => {
         if (e.button !== 0 || card.locked) return
         e.stopPropagation()
         setSel([card.id])
         const s0 = sizeOf(card)
-        const p0 = { x: card.x, y: card.y }
+        const r0 = { l: card.x, t: card.y, r: card.x + s0.w, b: card.y + s0.h }
         const from = { x: e.clientX, y: e.clientY }
         const ratio = s0.w / s0.h
         const [mw, mh] = MIN[card.type]
+        const E = dir.includes('e')
+        const W = dir.includes('w')
+        const N = dir.includes('n')
+        const S = dir.includes('s')
         grip.setPointerCapture(e.pointerId)
         const move = (ev) => {
           const k = board.view.k
           const ctrl = ev.ctrlKey || ev.metaKey
-          // Ctrl: the corner of the card goes onto the nearest dot too, and its edges onto the dots it is pulled to
-          card.x = ctrl ? Math.round(p0.x / GRID) * GRID : p0.x
-          card.y = ctrl ? Math.round(p0.y / GRID) * GRID : p0.y
-          const right = p0.x + s0.w + (ev.clientX - from.x) / k
-          const bottom = p0.y + s0.h + (ev.clientY - from.y) / k
-          let w = clamp(right - card.x, mw, 2400)
-          let h = clamp(bottom - card.y, mh, 2400)
-          if (card.type === 'image' && !ev.altKey && !ctrl) h = w / ratio
-          if (ctrl || (board.settings.snapGrid && !ev.altKey)) {
-            w = Math.max(Math.ceil(mw / GRID) * GRID, Math.round((card.x + w) / GRID) * GRID - card.x)
-            h = card.type === 'image' && !ctrl ? w / ratio : Math.max(Math.ceil(mh / GRID) * GRID, Math.round((card.y + h) / GRID) * GRID - card.y)
+          const snap = ctrl || (board.settings.snapGrid && !ev.altKey)
+          const g = (v) => (snap ? Math.round(v / GRID) * GRID : v)
+          const dx = (ev.clientX - from.x) / k
+          const dy = (ev.clientY - from.y) / k
+          let l = W ? g(r0.l + dx) : ctrl ? g(r0.l) : r0.l
+          let t = N ? g(r0.t + dy) : ctrl ? g(r0.t) : r0.t
+          let r = E ? g(r0.r + dx) : ctrl ? g(r0.r) : r0.r
+          let b = S ? g(r0.b + dy) : ctrl ? g(r0.b) : r0.b
+          // (never smaller than the card may be: the edge that moves stops)
+          if (r - l < mw) W ? (l = r - mw) : (r = l + mw)
+          if (b - t < mh) N ? (t = b - mh) : (b = t + mh)
+          if (card.type === 'image' && !ev.altKey && !ctrl && (E || W) && (N || S)) {
+            const h = (r - l) / ratio
+            if (N) t = b - h
+            else b = t + h
           }
-          card.w = Math.round(Math.max(mw, w))
-          card.h = Math.round(Math.max(mh, h))
+          card.x = Math.round(l)
+          card.y = Math.round(t)
+          card.w = Math.round(Math.min(2400, r - l))
+          card.h = Math.round(Math.min(2400, b - t))
           place(card)
           if (card.type === 'shape') redrawShape(card)
           drawLinks()
@@ -1655,20 +1949,49 @@ export default {
         temp.setAttribute('y2', p.y)
         temp.setAttribute('visibility', 'visible')
       }
-      /** An arrow let go on an empty place: a new card there, fastened by the side that faces the arrow. */
-      const arrowToEmpty = (from, fromSide, p) => {
+      /** A new block at the end of an arrow, fastened by its side that faces the arrow, and typed into at once. */
+      const connectNew = (from, fromSide, p, props) => {
         const toSide = OPPOSITE[fromSide]
-        const [w, h] = SIZE.text
-        // (the middle of the new card, so that the middle of its side is where the arrow was let go)
+        const [w, h] = sizeFor(props)
+        // (the middle of the new block, so that the middle of its side is where the arrow was let go)
         const [nx, ny] = NORMAL[fromSide]
         const at = { x: p.x + (nx * w) / 2, y: p.y + (ny * h) / 2 }
         const c = batch(() => {
-          const made = addCard({ type: 'text' }, at, false)
+          const made = addCard(props, at, false)
           addLink(from.id, made.id, fromSide, toSide)
           return made
         })
         fresh.add(c.id)
         startEdit(c)
+      }
+      /** An arrow let go on an empty place: a short list of what to make there, joined to the arrow. */
+      const arrowToEmpty = (from, fromSide, p) => {
+        const s = toScreen(p.x, p.y)
+        const shape = SHAPES.find((x) => x.id === lastShape)
+        // (the line stays drawn while the list is open: it shows where the block goes)
+        tempTo(anchorOf(from, fromSide), p)
+        const done = () => temp.setAttribute('visibility', 'hidden')
+        showMenu(s.x + 6, s.y + 6, [
+          { label: tt('Карточка', 'Card'), hint: 'T', action: () => (done(), connectNew(from, fromSide, p, { type: 'text' })) },
+          { label: tt('Стикер', 'Sticky note'), hint: 'S', action: () => (done(), connectNew(from, fromSide, p, { type: 'sticky', color: STICKY })) },
+          { label: tt(shape.ru, shape.en), icon: '◇', action: () => (done(), connectNew(from, fromSide, p, { type: 'shape', shape: shape.id })) },
+          {
+            label: tt('Заметка из хранилища…', 'Note from the vault…'),
+            action: () => {
+              done()
+              const [w, h] = SIZE.note
+              const [ax, ay] = NORMAL[fromSide]
+              pickNote({ x: p.x + (ax * w) / 2, y: p.y + (ay * h) / 2 }, false, (made) => addLink(from.id, made.id, fromSide, OPPOSITE[fromSide]))
+            }
+          }
+        ])
+        // (closed without a choice: the line goes too)
+        const watch = setInterval(() => {
+          if (!document.querySelector('.bd-menu')) {
+            done()
+            clearInterval(watch)
+          }
+        }, 250)
       }
       /** Let go of an arrow on a card: it joins them at the side it was let go at; on an empty place: a new card. */
       const dropArrow = (from, fromSide, cx, cy) => {
@@ -1700,6 +2023,42 @@ export default {
         port.addEventListener('pointerup', up)
         port.addEventListener('pointercancel', up)
       }
+      /**
+       * The arrow tool: pressed on a block and dragged, an arrow goes out of the side of it that faces the mouse; let go
+       * on a block it joins them, on an empty place it asks what to make there. A click without a drag starts an arrow
+       * that the next click on a block finishes.
+       */
+      const arrowToolDown = (e, card, node) => {
+        node.setPointerCapture(e.pointerId)
+        let moved = false
+        let side = 'right'
+        const move = (ev) => {
+          if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return
+          moved = true
+          const p = toWorld(ev.clientX, ev.clientY)
+          const found = cardAt(ev.clientX, ev.clientY)
+          const target = found && found.card.id !== card.id ? found : null
+          markTarget(target?.card, target?.side)
+          const to = target ? anchorOf(target.card, target.side) : p
+          side = sideToward(card, to)
+          tempTo(anchorOf(card, side), to)
+        }
+        const up = (ev) => {
+          node.removeEventListener('pointermove', move)
+          node.removeEventListener('pointerup', up)
+          node.removeEventListener('pointercancel', up)
+          if (ev.type === 'pointercancel') {
+            temp.setAttribute('visibility', 'hidden')
+            markTarget(null)
+            return
+          }
+          if (moved) dropArrow(card, side, ev.clientX, ev.clientY)
+          else startArrowMode(card)
+        }
+        node.addEventListener('pointermove', move)
+        node.addEventListener('pointerup', up)
+        node.addEventListener('pointercancel', up)
+      }
       /** "Arrow from here" in a menu: the next click on a card finishes the arrow. */
       const startArrowMode = (card) => {
         arrowMode = { from: card }
@@ -1723,7 +2082,7 @@ export default {
       /** In the arrow mode the line follows the mouse from the side of the card that faces it. */
       const arrowModeTo = (p) => {
         const from = arrowMode.from
-        tempTo(anchorOf(from, sideNear(from, p)), p)
+        tempTo(anchorOf(from, sideToward(from, p)), p)
       }
 
       /* ---------- bend points and the ends of an arrow ---------- */
@@ -1734,7 +2093,9 @@ export default {
        */
       const linkDown = (e, l) => {
         const wasOn = selLink === l.id && !sel.size
-        setSel([], l.id)
+        // (an arrow already chosen is not drawn again: the line pressed must still be there when the mouse is let go,
+        // or the click, and the double click for the label, would not come)
+        if (!wasOn) setSel([], l.id)
         const start = { x: e.clientX, y: e.clientY }
         const at = toWorld(e.clientX, e.clientY)
         let i = -1
@@ -1770,6 +2131,45 @@ export default {
               commit()
             }, 280)
           }
+        }
+        canvas.addEventListener('pointermove', move)
+        canvas.addEventListener('pointerup', up)
+        canvas.addEventListener('pointercancel', up)
+      }
+      /**
+       * The label of an arrow dragged: it keeps the place along the arrow it was put at (a share of its length) and
+       * its shift from the line, so it goes with the arrow when the blocks move. Near the line it sticks to it.
+       */
+      const labelDown = (e, l) => {
+        if (!(selLink === l.id && !sel.size)) setSel([], l.id)
+        const r0 = routeOf(l)
+        if (!r0) return
+        const p0 = toWorld(e.clientX, e.clientY)
+        const grab = { x: p0.x - r0.mid.x, y: p0.y - r0.mid.y }
+        let moved = false
+        const move = (ev) => {
+          if (!moved) {
+            if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return
+            moved = true
+            canvas.setPointerCapture(e.pointerId)
+            floatBar.hidden = true
+          }
+          const r = routeOf(l)
+          const p = toWorld(ev.clientX, ev.clientY)
+          const want = { x: p.x - grab.x, y: p.y - grab.y }
+          const on = nearestOn(r.line, want)
+          l.lt = Math.round(on.t * 1000) / 1000
+          const off = { x: Math.round(want.x - on.x), y: Math.round(want.y - on.y) }
+          if (Math.hypot(off.x, off.y) * board.view.k < 8) delete l.lo
+          else l.lo = off
+          drawLinks()
+        }
+        const up = () => {
+          canvas.removeEventListener('pointermove', move)
+          canvas.removeEventListener('pointerup', up)
+          canvas.removeEventListener('pointercancel', up)
+          placeFloat()
+          if (moved) commit()
         }
         canvas.addEventListener('pointermove', move)
         canvas.addEventListener('pointerup', up)
@@ -1974,13 +2374,13 @@ export default {
         canvas.classList.toggle('searching', !!q)
         hitIds = new Set(hits.map((c) => c.id))
         for (const [id, node] of cardEls) node.classList.toggle('hit', hitIds.has(id))
-        searchCount.textContent = q ? `${hits.length ? hitAt + 1 : 0}/${hits.length}` : ''
+        searchCount.textContent = q ? `${hits.length ? hitAt + 1 : 0} ${tt('из', 'of')} ${hits.length}` : ''
         if (hits.length && center) centerOn(hits[0])
       }
       const nextHit = (step) => {
         if (!hits.length) return
         hitAt = (hitAt + step + hits.length) % hits.length
-        searchCount.textContent = `${hitAt + 1}/${hits.length}`
+        searchCount.textContent = `${hitAt + 1} ${tt('из', 'of')} ${hits.length}`
         centerOn(hits[hitAt])
         setSel([hits[hitAt].id])
       }
@@ -2014,6 +2414,9 @@ export default {
           const r = canvas.getBoundingClientRect()
           const v = board.view
           const view = { x: -v.x / v.k, y: -v.y / v.k, w: r.width / v.k, h: r.height / v.k }
+          // (a board that is all in view needs no map)
+          const b = board.cards.length ? boundsOf(board.cards) : null
+          miniBox.classList.toggle('fits', !b || (b.x >= view.x && b.y >= view.y && b.x + b.w <= view.x + view.w && b.y + b.h <= view.y + view.h))
           const all = board.cards.length ? boundsOf([...board.cards, { type: 'text', ...view, w: view.w, h: view.h }]) : view
           const pad = 20
           const s = Math.min((W - 8) / (all.w + pad), (H - 8) / (all.h + pad))
@@ -2067,9 +2470,11 @@ export default {
             box.append(menuList(items, close))
           }
         })
-      const menuAtButton = (e, items) => {
-        const r = e.currentTarget.getBoundingClientRect()
-        showMenu(r.left, r.bottom + 6, items)
+      /** A menu under a button (`up`: over it, for the buttons at the bottom of the field). */
+      const menuAtButton = (e, items, up = false) => {
+        const r = (e.currentTarget ?? e.target).getBoundingClientRect()
+        const tall = items.filter(Boolean).reduce((n, it) => n + (it.sep ? 11 : it.colors ? 40 : 31), 12)
+        showMenu(r.left, up ? r.top - 6 - tall : r.bottom + 6, items)
       }
       const menuList = (items, close) => {
         const list = el('div', { className: 'bd-m' })
@@ -2180,89 +2585,71 @@ export default {
         }
       ]
 
+      const realSize = (card) => {
+        const img = new Image()
+        img.onload = () => {
+          card.w = img.naturalWidth
+          card.h = img.naturalHeight
+          place(card)
+          drawLinks()
+          placeFloat()
+          commit()
+        }
+        img.src = urlOf(card.src)
+      }
+      const editLinkUrl = async (card) => {
+        const v = await api.ui.prompt(tt('Адрес ссылки', 'Link address'), card.url)
+        if (v?.trim()) setProp([card], 'url', normUrl(v.trim()))
+      }
+      /**
+       * The menu of a block, short and in groups: its main action, the clipboard, the arrow and the frame, the order,
+       * the lock, deleting. Its look (colour, text size, form) is in the panel over it.
+       */
       const cardMenu = (card) => {
-        const items = []
         const one = [card]
+        const main = []
         if (card.type === 'note') {
-          items.push({ label: tt('Открыть заметку', 'Open the note'), hint: tt('двойной клик', 'double click'), action: () => api.vault.open(card.note) })
-          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.note) })
-          items.push({ label: tt('Скопировать имя', 'Copy the name'), action: () => void copyText(nameOf(card.note)) })
+          main.push({ label: tt('Открыть заметку', 'Open the note'), hint: 'Enter', action: () => api.vault.open(card.note) })
+          main.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.note) })
         } else if (card.type === 'link') {
-          items.push({ label: tt('Открыть в браузере', 'Open in the browser'), hint: tt('двойной клик', 'double click'), action: () => window.open(normUrl(card.url)) })
-          items.push({ label: tt('Скопировать адрес', 'Copy the address'), action: () => void copyText(card.url) })
-          items.push({
-            label: tt('Изменить…', 'Edit…'),
-            action: async () => {
-              const v = await api.ui.prompt(tt('Адрес ссылки', 'Link address'), card.url)
-              if (v?.trim()) setProp(one, 'url', normUrl(v.trim()))
-            }
-          })
-          items.push({
+          main.push({ label: tt('Открыть в браузере', 'Open in the browser'), hint: 'Enter', action: () => window.open(normUrl(card.url)) })
+          main.push({ label: tt('Изменить адрес…', 'Edit the address…'), action: () => void editLinkUrl(card) })
+          main.push({
             label: tt('Название…', 'Title…'),
             action: async () => {
               const v = await api.ui.prompt(tt('Название ссылки', 'Title of the link'), card.text ?? '')
               if (v !== null) setProp(one, 'text', v.trim() || undefined)
             }
           })
-        } else if (card.type === 'image') {
-          items.push({ label: tt('Открыть картинку', 'Open the picture'), hint: tt('двойной клик', 'double click'), action: () => void files.openFile(card.src) })
-          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.src) })
-          items.push({
-            label: tt('Исходный размер', 'Original size'),
-            action: () => {
-              const img = new Image()
-              img.onload = () => {
-                card.w = img.naturalWidth
-                card.h = img.naturalHeight
-                place(card)
-                drawLinks()
-                commit()
-              }
-              img.src = urlOf(card.src)
-            }
-          })
-        } else if (card.type === 'file') {
-          items.push({ label: tt('Открыть файл', 'Open the file'), hint: tt('двойной клик', 'double click'), action: () => openAny(card.src) })
-          items.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.src) })
-          items.push({ label: tt('Скопировать имя', 'Copy the name'), action: () => void copyText(card.src.split('/').pop()) })
+        } else if (card.type === 'image' || card.type === 'file') {
+          main.push({ label: card.type === 'image' ? tt('Открыть картинку', 'Open the picture') : tt('Открыть файл', 'Open the file'), hint: 'Enter', action: () => openAny(card.src) })
+          main.push({ label: tt('Показать в проводнике', 'Show in Explorer'), action: () => void files.reveal(card.src) })
         } else if (card.type === 'frame') {
-          items.push({ label: tt('Название…', 'Name…'), hint: tt('двойной клик', 'double click'), action: () => startEdit(card, 'all') })
-          items.push({ label: tt('Подогнать под содержимое', 'Fit to the contents'), disabled: !membersOf(card).length, action: () => fitFrame(card) })
-          items.push({
-            label: tt('Выделить содержимое', 'Select the contents'),
-            disabled: !membersOf(card).length,
-            action: () => setSel(membersOf(card).map((c) => c.id))
-          })
-          items.push({ label: tt('Приблизить к рамке', 'Zoom to the frame'), action: () => fitRect(rectOf(card), 2) })
-        } else {
-          items.push({ label: tt('Изменить текст', 'Edit text'), hint: tt('двойной клик', 'double click'), action: () => startEdit(card) })
-        }
-        if (card.type === 'shape') {
-          items.push({
-            label: tt('Форма', 'Shape'),
-            children: SHAPES.map((s) => ({ label: tt(s.ru, s.en), checked: (card.shape ?? 'rect') === s.id, action: () => setProp(one, 'shape', s.id) }))
-          })
-        }
-        items.push({ sep: true })
-        items.push({ label: tt('Цвет', 'Colour'), children: colorMenu(one) })
-        if (['text', 'sticky', 'shape', 'todo', 'note'].includes(card.type)) items.push({ label: tt('Размер текста', 'Text size'), children: fontMenu(one) })
-        if (card.type === 'text') items.push({ label: tt('Превратить в стикер', 'Make it a sticky note'), action: () => ((card.type = 'sticky'), (card.color ??= STICKY), rebuildOne(card)) })
-        if (card.type === 'sticky') items.push({ label: tt('Превратить в карточку', 'Make it a plain card'), action: () => ((card.type = 'text'), rebuildOne(card)) })
-        items.push({ sep: true })
-        items.push({ label: tt('Стрелка отсюда', 'Arrow from here'), hint: 'A', action: () => startArrowMode(card) })
-        items.push({ label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() })
-        items.push({ label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() })
-        items.push({ label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() })
-        items.push({ label: tt('Порядок', 'Order'), children: orderMenu(one) })
-        items.push({ label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(one) })
-        items.push({ label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), disabled: card.locked, action: () => alignToGrid(one) })
-        items.push({ label: card.locked ? tt('Открепить', 'Unlock') : tt('Закрепить', 'Lock'), action: () => toggleLock(one) })
-        items.push({ sep: true })
-        if (card.type === 'frame') {
-          items.push({ label: tt('Удалить рамку', 'Delete the frame'), hint: 'Del', danger: true, action: () => removeSelected() })
-          items.push({ label: tt('Удалить рамку с содержимым', 'Delete the frame with its contents'), danger: true, action: () => removeFrameWithContents(card) })
-        } else items.push({ label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() })
-        return items
+          main.push({ label: tt('Название', 'Name'), hint: 'Enter', action: () => startEdit(card, 'all') })
+          main.push({ label: tt('Выделить содержимое', 'Select the contents'), disabled: !membersOf(card).length, action: () => setSel(membersOf(card).map((c) => c.id)) })
+        } else main.push({ label: tt('Изменить текст', 'Edit the text'), hint: 'Enter', action: () => startEdit(card) })
+        return [
+          ...main,
+          { sep: true },
+          { label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() },
+          { label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() },
+          { label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() },
+          { label: tt('Вставить', 'Paste'), hint: 'Ctrl+V', action: () => void pasteHere() },
+          { sep: true },
+          { label: tt('Стрелка отсюда', 'Arrow from here'), hint: 'A', action: () => startArrowMode(card) },
+          { label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(one) },
+          { sep: true },
+          { label: tt('Порядок', 'Order'), children: orderMenu(one) },
+          { label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), disabled: card.locked, action: () => alignToGrid(one) },
+          { label: card.locked ? tt('Открепить', 'Unlock') : tt('Закрепить', 'Lock'), action: () => toggleLock(one) },
+          { sep: true },
+          ...(card.type === 'frame'
+            ? [
+                { label: tt('Удалить рамку', 'Delete the frame'), hint: 'Del', danger: true, action: () => removeSelected() },
+                { label: tt('Удалить рамку с содержимым', 'Delete the frame with its contents'), danger: true, action: () => removeFrameWithContents(card) }
+              ]
+            : [{ label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() }])
+        ]
       }
       /** The kind of a card changed: it is drawn again. */
       const rebuildOne = (card) => {
@@ -2271,56 +2658,65 @@ export default {
         makeCard(card)
         restack()
         commit()
+        placeFloat()
       }
 
       const multiMenu = () => {
         const cards = selected()
         return [
-          { label: tt('Цвет', 'Colour'), children: colorMenu(cards) },
-          ...arrangeMenu(cards),
-          { label: tt('Порядок', 'Order'), children: orderMenu(cards) },
-          { sep: true },
-          { label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(cards) },
-          { label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), action: () => alignToGrid(cards) },
-          { label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() },
           { label: tt('Копировать', 'Copy'), hint: 'Ctrl+C', action: () => void copySel() },
           { label: tt('Вырезать', 'Cut'), hint: 'Ctrl+X', action: () => void cutSel() },
+          { label: tt('Дублировать', 'Duplicate'), hint: 'Ctrl+Shift+D', action: () => duplicate() },
+          { sep: true },
+          { label: tt('Обернуть в рамку', 'Wrap in a frame'), hint: 'Ctrl+G', action: () => wrapInFrame(cards) },
+          { sep: true },
+          { label: tt('Порядок', 'Order'), children: orderMenu(cards) },
+          ...arrangeMenu(cards),
+          { label: tt('Выровнять по сетке', 'Align to the grid'), hint: tt('Ctrl+перетаскивание', 'Ctrl+drag'), action: () => alignToGrid(cards) },
           { label: cards.every((c) => c.locked) ? tt('Открепить всё', 'Unlock all') : tt('Закрепить всё', 'Lock all'), action: () => toggleLock(cards) },
-          { label: tt('Приблизить к выделенному', 'Zoom to the selection'), action: () => fitSelection() },
           { sep: true },
           { label: tt('Удалить', 'Delete') + ` (${cards.length})`, hint: 'Del', danger: true, action: () => removeSelected() }
         ]
       }
 
+      const lineItems = (l) => [
+        { label: tt('Сплошная', 'Solid'), checked: (l.style ?? 'solid') === 'solid', action: () => linkProp(l, 'style', 'solid') },
+        { label: tt('Пунктир', 'Dashed'), checked: l.style === 'dashed', action: () => linkProp(l, 'style', 'dashed') },
+        { label: tt('Точки', 'Dotted'), checked: l.style === 'dotted', action: () => linkProp(l, 'style', 'dotted') }
+      ]
+      const endItems = (l) => [
+        { label: tt('Стрелка на конце', 'Arrow at the end'), checked: (l.head ?? 'end') === 'end', action: () => linkProp(l, 'head', 'end') },
+        { label: tt('Стрелки с обеих сторон', 'Arrows at both ends'), checked: l.head === 'both', action: () => linkProp(l, 'head', 'both') },
+        { label: tt('Без стрелок', 'No arrows'), checked: l.head === 'none', action: () => linkProp(l, 'head', 'none') }
+      ]
+      const formItems = (l) => [
+        { label: tt('Прямая', 'Straight'), checked: !l.curve && !l.elbow, action: () => linkShape(l, null) },
+        { label: tt('Изогнутая', 'Curved'), checked: !!l.curve, action: () => linkShape(l, 'curve') },
+        { label: tt('Ломаная (под прямым углом)', 'Elbow (right angles)'), checked: !!l.elbow && !l.curve, action: () => linkShape(l, 'elbow') },
+        { sep: true },
+        // (the corners of a line with bends are rounded by default; this turns it off and on)
+        { label: tt('Скруглять углы', 'Rounded corners'), checked: !l.sharp, disabled: !!l.curve, action: () => linkProp(l, 'sharp', l.sharp ? undefined : true) }
+      ]
       const linkMenu = (l) => [
-        { label: tt('Подпись…', 'Label…'), hint: tt('двойной клик', 'double click'), action: () => void editLabel(l) },
-        {
-          label: tt('Линия', 'Line'),
-          children: [
-            { label: tt('Сплошная', 'Solid'), checked: (l.style ?? 'solid') === 'solid', action: () => linkProp(l, 'style', 'solid') },
-            { label: tt('Пунктир', 'Dashed'), checked: l.style === 'dashed', action: () => linkProp(l, 'style', 'dashed') },
-            { label: tt('Точки', 'Dotted'), checked: l.style === 'dotted', action: () => linkProp(l, 'style', 'dotted') }
-          ]
-        },
-        {
-          label: tt('Концы', 'Ends'),
-          children: [
-            { label: tt('Стрелка на конце', 'Arrow at the end'), checked: (l.head ?? 'end') === 'end', action: () => linkProp(l, 'head', 'end') },
-            { label: tt('Стрелки с обеих сторон', 'Arrows at both ends'), checked: l.head === 'both', action: () => linkProp(l, 'head', 'both') },
-            { label: tt('Без стрелок', 'No arrows'), checked: l.head === 'none', action: () => linkProp(l, 'head', 'none') }
-          ]
-        },
-        {
-          label: tt('Форма', 'Shape'),
-          children: [
-            { label: tt('Прямая', 'Straight'), checked: !l.curve && !l.elbow, action: () => linkShape(l, null) },
-            { label: tt('Изогнутая', 'Curved'), checked: !!l.curve, action: () => linkShape(l, 'curve') },
-            { label: tt('Ломаная (под прямым углом)', 'Elbow (right angles)'), checked: !!l.elbow && !l.curve, action: () => linkShape(l, 'elbow') }
-          ]
-        },
-        { label: tt('Убрать точки изгиба', 'Remove the bend points'), disabled: !l.pts?.length, action: () => clearBends(l) },
+        { label: tt('Подпись', 'Label'), hint: tt('двойной щелчок', 'double click'), action: () => void editLabel(l) },
+        { label: tt('Линия', 'Line'), children: lineItems(l) },
+        { label: tt('Концы', 'Ends'), children: endItems(l) },
+        { label: tt('Форма', 'Shape'), children: formItems(l) },
         { label: tt('Цвет', 'Colour'), children: [{ colors: { current: l.color, pick: (c) => linkProp(l, 'color', c || undefined) } }] },
+        { sep: true },
         { label: tt('Развернуть', 'Reverse'), action: () => reverseLink(l) },
+        { label: tt('Убрать точки изгиба', 'Remove the bend points'), disabled: !l.pts?.length, action: () => clearBends(l) },
+        {
+          label: tt('Подпись — на середину', 'The label back to the middle'),
+          disabled: !l.label || (!Number.isFinite(l.lt) && !l.lo),
+          action: () => {
+            delete l.lt
+            delete l.lo
+            drawLinks()
+            placeFloat()
+            commit()
+          }
+        },
         { sep: true },
         { label: tt('Удалить', 'Delete'), hint: 'Del', danger: true, action: () => removeSelected() }
       ]
@@ -2339,12 +2735,56 @@ export default {
         commit()
       }
 
-      const viewMenu = () => [
+      const zoom100 = () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1)
+      /** The menu of the percentage at the bottom left. */
+      const zoomMenu = () => [
         { label: tt('Вписать всё', 'Fit everything'), hint: 'Shift+1', action: () => fit() },
-        { label: tt('Масштаб 100%', 'Zoom 100%'), hint: 'Ctrl+0', action: () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1) },
-        { label: tt('Приблизить', 'Zoom in'), hint: 'Ctrl+=', action: () => zoomBy(1.25) },
-        { label: tt('Отдалить', 'Zoom out'), hint: 'Ctrl+−', action: () => zoomBy(1 / 1.25) },
-        { sep: true },
+        { label: tt('К выделенному', 'Zoom to the selection'), hint: 'Shift+2', disabled: !sel.size, action: () => fitSelection() },
+        { label: '100%', hint: 'Shift+0', action: () => zoom100() }
+      ]
+      /** The list of boards, by the arrow next to the title: a new one first. */
+      const boardsList = () => {
+        const paths = boardPaths()
+        return [
+          { label: tt('Новая доска', 'New board'), icon: '+', action: () => void createBoard() },
+          ...(paths.length ? [{ sep: true }] : []),
+          ...paths.map((p) => ({ label: p.includes('/') ? `${nameOf(p)}  ·  ${p.slice(0, p.lastIndexOf('/'))}` : nameOf(p), checked: p === path, action: () => void controller?.open(p) }))
+        ]
+      }
+      /** The keys of the board, in one window ("⋯ → Keys" and "?"). */
+      const KEYS = () => [
+        [tt('Блоки', 'Blocks'), [['T', tt('Карточка', 'Card')], ['S', tt('Стикер', 'Sticky note')], ['N', tt('Заметка из хранилища', 'Note from the vault')], ['F', tt('Рамка', 'Frame')], [tt('Двойной щелчок', 'Double click'), tt('Карточка в этом месте', 'A card at this place')], ['Enter', tt('Править текст / открыть', 'Edit the text / open')]]],
+        [tt('Инструменты', 'Tools'), [['V', tt('Выбор', 'Select')], ['H', tt('Рука', 'Hand')], ['A', tt('Стрелка', 'Arrow')], [tt('Пробел + перетаскивание', 'Space + drag'), tt('Двигать поле', 'Move the field')], ['Esc', tt('Снять выделение, выйти из инструмента', 'Clear the choice, leave the tool')]]],
+        [tt('Правка', 'Editing'), [['Ctrl+Z / Ctrl+Y', tt('Отменить / повторить', 'Undo / redo')], ['Ctrl+C / X / V', tt('Копировать / вырезать / вставить', 'Copy / cut / paste')], ['Ctrl+Shift+D', tt('Дублировать', 'Duplicate')], ['Ctrl+G', tt('Обернуть в рамку', 'Wrap in a frame')], ['Delete', tt('Удалить', 'Delete')], [tt('Стрелки', 'Arrow keys'), tt('Сдвинуть на шаг сетки (Shift — крупно, Alt — на пиксель)', 'Move by a step of the grid (Shift: big, Alt: a pixel)')], ['Tab', tt('К следующему блоку', 'To the next block')], [tt('Ctrl + перетаскивание', 'Ctrl + drag'), tt('По точкам сетки', 'On the dots of the grid')], [tt('Alt + перетаскивание', 'Alt + drag'), tt('Копия блока', 'A copy of the block')]]],
+        [tt('Вид', 'View'), [[tt('Колесо', 'Wheel'), tt('Прокрутка (Shift — вбок)', 'Scroll (Shift: sideways)')], [tt('Ctrl + колесо', 'Ctrl + wheel'), tt('Масштаб', 'Zoom')], ['Shift+1', tt('Вписать всё', 'Fit everything')], ['Shift+2', tt('К выделенному', 'To the selection')], ['Shift+0', '100%'], ['Ctrl+F', tt('Найти на доске', 'Find on the board')], ['?', tt('Это окно', 'This window')]]]
+      ]
+      const showKeys = () => {
+        const r = canvas.getBoundingClientRect()
+        api.ui.popup({
+          x: r.left + r.width / 2 - 260,
+          y: r.top + 40,
+          mount: (box) => {
+            box.classList.add('bd-keys')
+            box.append(el('div', { className: 'bd-keys-title', textContent: tt('Горячие клавиши доски', 'Keys of the board') }))
+            const grid = el('div', { className: 'bd-keys-grid' })
+            for (const [head, rows] of KEYS()) {
+              const col = el('div', { className: 'bd-keys-col' }, [el('div', { className: 'bd-keys-head', textContent: head })])
+              for (const [k, what] of rows) col.append(el('div', { className: 'bd-keys-row' }, [el('kbd', { textContent: k }), el('span', { textContent: what })]))
+              grid.append(col)
+            }
+            box.append(grid, el('div', { className: 'bd-keys-foot', textContent: tt('Заметки и файлы можно перетащить на доску из дерева файлов.', 'Notes and files can be dragged onto the board from the file tree.') }))
+          }
+        })
+      }
+      const wheelZooms = () => !!data().wheelZoom
+      const viewMenu = () => [
+        {
+          label: tt('Колесо мыши', 'The mouse wheel'),
+          children: [
+            { label: tt('Прокручивает (Ctrl — масштаб)', 'Scrolls (Ctrl zooms)'), checked: !wheelZooms(), action: () => api.data.set({ ...data(), wheelZoom: false }) },
+            { label: tt('Масштабирует, как в Miro', 'Zooms, as in Miro'), checked: wheelZooms(), action: () => api.data.set({ ...data(), wheelZoom: true }) }
+          ]
+        },
         {
           label: tt('Сетка', 'Grid'),
           children: [
@@ -2355,7 +2795,7 @@ export default {
         },
         { label: tt('Прилипать к сетке', 'Snap to the grid'), checked: !!board.settings.snapGrid, action: () => setSetting('snapGrid', !board.settings.snapGrid) },
         { label: tt('Направляющие по краям карточек', 'Guides to the edges of cards'), checked: board.settings.guides !== false, action: () => setSetting('guides', board.settings.guides === false) },
-        { label: tt('Мини-карта', 'Minimap'), checked: !mini.hidden, action: () => setSetting('minimap', mini.hidden) }
+        { label: tt('Мини-карта', 'Minimap'), checked: !miniBox.hidden, action: () => setSetting('minimap', miniBox.hidden) }
       ]
       const setSetting = (key, value) => {
         board.settings[key] = value
@@ -2363,17 +2803,13 @@ export default {
         changed()
       }
 
+      // the menu of an empty place: what to put here, and the board as a whole
       const canvasMenu = (at) => [
-        { label: tt('Добавить', 'Add'), children: addItems(at) },
         { label: tt('Вставить', 'Paste'), hint: 'Ctrl+V', action: () => void pasteHere(at) },
+        { label: tt('Добавить блок', 'Add a block'), children: addItems(at) },
+        { sep: true },
         { label: tt('Выбрать всё', 'Select all'), hint: 'Ctrl+A', disabled: !board.cards.length, action: () => setSel(board.cards.map((c) => c.id)) },
-        { sep: true },
-        { label: tt('Вид', 'View'), children: viewMenu() },
-        { label: tt('Найти на доске…', 'Find on the board…'), hint: 'Ctrl+F', action: () => openSearch() },
-        { label: tt('Экспорт', 'Export'), children: exportMenu() },
-        { sep: true },
-        { label: tt('Отменить', 'Undo'), hint: 'Ctrl+Z', disabled: hist.i <= 0, action: () => undo() },
-        { label: tt('Повторить', 'Redo'), hint: 'Ctrl+Y', disabled: hist.i >= hist.stack.length - 1, action: () => redo() }
+        { label: tt('Вписать всё', 'Fit everything'), hint: 'Shift+1', action: () => fit() }
       ]
 
       const toMarkdown = () => {
@@ -2438,7 +2874,7 @@ export default {
         listed = key
         select.replaceChildren(...paths.map((p) => el('option', { value: p, textContent: nameOf(p) })))
         if (path && paths.includes(path)) select.value = path
-        selectWrap.hidden = !paths.length
+        void paths.length
         return paths
       }
       /**
@@ -2448,6 +2884,8 @@ export default {
       const createBoard = async (dir = '') => {
         if (dir && !(await api.vault.exists(dir))) await files.folder(dir)
         const next = freeBoardPath(defaultName(), dir)
+        // (a new board under the name of one that was renamed or deleted: its hint is shown again)
+        forgetHint(next)
         await api.vault.write(next, serialize(nameOf(next), newBoard()), true)
         await new Promise((r) => setTimeout(r, 200))
         fillSelect()
@@ -2478,6 +2916,7 @@ export default {
         },
         { label: tt('Показать в проводнике', 'Show in Explorer'), disabled: !path, action: () => void files.reveal(path) },
         { label: tt('Экспорт', 'Export'), disabled: !board, children: exportMenu() },
+        { label: tt('Горячие клавиши', 'Keys'), hint: '?', action: () => showKeys() },
         { sep: true },
         {
           label: tt('Удалить доску…', 'Delete the board…'),
@@ -2564,7 +3003,7 @@ export default {
       }
 
       /* ---------- picking a note ---------- */
-      const pickNote = (at, snap = false) => {
+      const pickNote = (at, snap = false, then = null) => {
         const p = at ? toScreen(at.x, at.y) : (() => { const r = canvas.getBoundingClientRect(); return { x: r.left + r.width / 2 - 130, y: r.top + 90 } })()
         api.ui.popup({
           x: p.x,
@@ -2584,7 +3023,8 @@ export default {
                       const b = el('button', { className: 'bd-found-row', textContent: n.replace(/\.md$/i, '') })
                       b.onclick = () => {
                         close()
-                        addCard({ type: 'note', note: n }, at, false, snap)
+                        const made = addCard({ type: 'note', note: n }, at, false, snap)
+                        then?.(made)
                       }
                       return b
                     })
@@ -2616,7 +3056,7 @@ export default {
       })
 
       canvas.addEventListener('pointerdown', (e) => {
-        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes')) return
+        if (!board || e.target.closest('.bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes, .bd-minibox, .bd-hint-btn, .bd-label-edit')) return
         // (a press anywhere else on the field folds the panel of shapes)
         if (!shapesPanel.hidden) toggleShapes(false)
         canvas.focus()
@@ -2626,7 +3066,7 @@ export default {
           const from = arrowMode.from
           stopArrowMode()
           const p = toWorld(e.clientX, e.clientY)
-          arrowToEmpty(from, sideNear(from, p), p)
+          arrowToEmpty(from, sideToward(from, p), p)
           return
         }
         const handle = e.target.closest('.bd-wp, .bd-end')
@@ -2636,6 +3076,14 @@ export default {
           if (!l) return
           if (handle.classList.contains('bd-wp')) bendDown(e, l, Number(handle.dataset.i))
           else endDown(e, l, handle.dataset.end)
+          return
+        }
+        // the label of an arrow is dragged along it, or off it (as in draw.io)
+        const onLabel = e.target.closest('.bd-label')
+        if (onLabel && e.button === 0 && !broken && !spaceDown && tool !== 'hand') {
+          e.stopPropagation()
+          const l = board.links.find((x) => x.id === onLabel.closest('.bd-link')?.dataset.id)
+          if (l) labelDown(e, l)
           return
         }
         const onLink = e.target.closest('.bd-link')
@@ -2713,17 +3161,28 @@ export default {
           if (!board) return
           e.preventDefault()
           const r = canvas.getBoundingClientRect()
-          if (e.shiftKey) {
-            board.view.x -= e.deltaY
-            applyView()
-            saveView()
-          } else zoomAt(e.clientX - r.left, e.clientY - r.top, board.view.k * Math.exp(-e.deltaY * 0.0015))
+          // the wheel scrolls (Shift: sideways); Ctrl+wheel and the pinch of a touchpad (it comes as Ctrl+wheel)
+          // zoom to the mouse. "Zooms, as in Miro" in the View menu turns the plain wheel into the zoom.
+          const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1
+          if (e.ctrlKey || e.metaKey || (wheelZooms() && !e.shiftKey)) {
+            // (a pinch gives small steps, a wheel big ones)
+            const f = Math.exp(-e.deltaY * unit * (Math.abs(e.deltaY * unit) < 50 ? 0.01 : 0.0015))
+            zoomAt(e.clientX - r.left, e.clientY - r.top, board.view.k * f)
+            return
+          }
+          if (e.shiftKey && !e.deltaX) board.view.x -= e.deltaY * unit
+          else {
+            board.view.x -= e.deltaX * unit
+            board.view.y -= e.deltaY * unit
+          }
+          applyView()
+          saveView()
         },
         { passive: false }
       )
 
       canvas.addEventListener('dblclick', (e) => {
-        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes')) return
+        if (!board || broken || e.target.closest('.bd-card, .bd-float, .bd-zoombox, .bd-mini, .bd-search, .bd-dock, .bd-shapes, .bd-minibox, .bd-hint-btn, .bd-label-edit')) return
         // a double click on a bend point takes it away
         const wp = e.target.closest('.bd-wp')
         if (wp) {
@@ -2744,7 +3203,7 @@ export default {
       })
 
       canvas.addEventListener('contextmenu', (e) => {
-        if (!board || e.target.closest('.bd-search, .bd-mini, .bd-dock, .bd-shapes')) return
+        if (!board || e.target.closest('.bd-search, .bd-mini, .bd-dock, .bd-shapes, .bd-minibox, .bd-zoombox, .bd-hint-btn, .bd-label-edit')) return
         e.preventDefault()
         if (broken) return
         const at = toWorld(e.clientX, e.clientY)
@@ -2785,9 +3244,15 @@ export default {
           // (a note from the tree is put on the board, never moved: the tree keeps it)
           // (an effect the source does not allow would make the browser refuse the drop)
           if (types.includes('text/syntex-path')) e.dataTransfer.dropEffect = /copy|all|uninitialized/i.test(e.dataTransfer.effectAllowed) ? 'copy' : 'move'
+          // (the field is lit while something is carried over it)
+          canvas.classList.add('dropping')
         }
       })
+      canvas.addEventListener('dragleave', (e) => {
+        if (!canvas.contains(e.relatedTarget)) canvas.classList.remove('dropping')
+      })
       canvas.addEventListener('drop', async (e) => {
+        canvas.classList.remove('dropping')
         if (!board || broken) return
         // a note (or a picture) dragged from the tree: a card of it where it was let go
         const fromTree = e.dataTransfer?.getData('text/syntex-path')
@@ -2864,6 +3329,9 @@ export default {
         } else if (e.shiftKey && code === 'Digit2') {
           e.preventDefault()
           fitSelection()
+        } else if (e.shiftKey && code === 'Digit0') {
+          e.preventDefault()
+          zoom100()
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault()
           removeSelected()
@@ -2871,10 +3339,31 @@ export default {
           if (!shapesPanel.hidden) toggleShapes(false)
           else if (arrowMode) stopArrowMode()
           else if (!searchBox.hidden) closeSearch()
+          else if (tool !== 'select') setTool('select')
           else setSel([])
+        } else if (e.key === 'Enter' && sel.size === 1 && !ctrl) {
+          // Enter: the text of the chosen block (or its note, its file, its link) is opened
+          e.preventDefault()
+          activate(selected()[0])
+        } else if (e.key === 'Tab' && board.cards.length) {
+          // Tab and Shift+Tab: from block to block, in the order they were made; one out of view is brought in
+          e.preventDefault()
+          const list = board.cards.filter((c) => c.type !== 'frame')
+          if (!list.length) return
+          const at = sel.size === 1 ? list.findIndex((c) => sel.has(c.id)) : -1
+          const next = list[(at + (e.shiftKey ? -1 : 1) + list.length) % list.length] ?? list[0]
+          setSel([next.id])
+          const r = canvas.getBoundingClientRect()
+          const s = toScreen(next.x, next.y)
+          const q = sizeOf(next)
+          if (s.x < r.left || s.y < r.top || s.x + q.w * board.view.k > r.right || s.y + q.h * board.view.k > r.bottom) centerOn(next)
+        } else if (e.key === '?' || (e.shiftKey && code === 'Slash')) {
+          e.preventDefault()
+          showKeys()
         } else if (e.key.startsWith('Arrow') && sel.size) {
           e.preventDefault()
-          const step = e.shiftKey ? 10 : 1
+          // a step of the grid (Shift: four steps; Alt: one pixel, for the fine work)
+          const step = e.altKey ? 1 : e.shiftKey ? GRID * 4 : GRID
           const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
           const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
           for (const c of withMembers(selected()).filter((x) => !x.locked)) {
@@ -2891,7 +3380,9 @@ export default {
           if (code === 'KeyT') addCard({ type: 'text' }, here)
           else if (code === 'KeyS') addCard({ type: 'sticky', color: STICKY }, here)
           else if (code === 'KeyF') addCard({ type: 'frame', text: '' }, here)
+          else if (code === 'KeyN') pickNote(here)
           else if (code === 'KeyA' && sel.size === 1) startArrowMode(selected()[0])
+          else if (code === 'KeyA' || code === 'KeyC') setTool(tool === 'arrow' ? 'select' : 'arrow')
           else if (code === 'KeyH') setTool('hand')
           else if (code === 'KeyV') setTool('select')
         }
@@ -2906,6 +3397,8 @@ export default {
       const setTool = (t) => {
         tool = t
         canvas.classList.toggle('hand', t === 'hand')
+        canvas.classList.toggle('arrow-tool', t === 'arrow')
+        if (t === 'arrow' && sel.size) setSel([])
         syncToolbar()
       }
 
@@ -2921,18 +3414,32 @@ export default {
         board = parsed ?? newBoard()
         const seen = data().views?.[path]
         if (seen && Number.isFinite(seen.k) && Number.isFinite(seen.x) && Number.isFinite(seen.y)) board.view = { ...seen }
-        mini.hidden = board.settings.minimap === false
+        miniBox.hidden = board.settings.minimap === false
         hist = { stack: [snapshot()], i: 0 }
         rebuild()
         applyView()
-        hint.hidden = board.cards.length > 0 && !broken
-        hint.textContent = broken
-          ? tt('Данные доски повреждены, доска не изменяется: исправьте её файл .board или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its .board file or make a new board.')
-          : tt(
-              'Перетащите блок с панели снизу или дважды щёлкните по полю\nКолесо — масштаб, пробел + перетаскивание — двигать поле\nCtrl при перетаскивании — по точкам сетки\nФайлы и заметки можно перетащить сюда из дерева',
-              'Drag a block from the panel below or double click the field\nThe wheel zooms, Space + drag moves the field\nCtrl while dragging puts blocks on the dots of the grid\nFiles and notes can be dragged here from the tree'
-            )
+        // (a board opened for the first time here is shown whole)
+        const fresh0 = !(seen && Number.isFinite(seen.k))
+        if (fresh0 && board.cards.length && !broken) requestAnimationFrame(() => board && canvas.clientWidth && fit())
+        if (broken) hint.replaceChildren(tt('Данные доски повреждены, доска не изменяется: исправьте её файл .board или создайте новую.', 'The data of this board is damaged, so it is left alone: fix its .board file or make a new board.'))
+        else {
+          // one line and the three blocks most begun with; the rest is in "⋯ → Keys"
+          const big = (ico, label, act) => {
+            const b = el('button', { className: 'bd-hint-btn' }, [icon(ico), el('span', { textContent: label })])
+            b.onclick = act
+            return b
+          }
+          hint.replaceChildren(
+            el('div', { className: 'bd-hint-line', textContent: tt('Перетащите блок с панели внизу или дважды щёлкните по полю', 'Drag a block from the panel below or double click the field') }),
+            el('div', { className: 'bd-hint-btns' }, [
+              big('card', tt('Карточка', 'Card'), () => addCard({ type: 'text' }, null)),
+              big('note', tt('Заметка из хранилища', 'Note from the vault'), () => pickNote(null)),
+              big('media', tt('Картинка', 'Picture'), () => pickFile(null))
+            ])
+          )
+        }
         hint.classList.toggle('bad', broken)
+        syncHint()
         dock.hidden = broken
         toggleShapes(false)
         canvas.classList.toggle('readonly', broken)
@@ -2962,7 +3469,8 @@ export default {
         if (pendingNotes.length && controller) controller.addNotes(pendingNotes.splice(0))
       }
 
-      /* ---------- the dock at the bottom: what can be put on the board, dragged from it (or clicked) ---------- */
+      /* ---------- the dock at the bottom: every tool in one place ---------- */
+      // modes (choice, hand) | blocks | a shape (the last one used) and all the shapes | the arrow tool
       const shapeIcon = (id) => {
         const [w, h] = id === 'circle' ? [18, 18] : id === 'diamond' ? [24, 18] : [26, 17]
         const svg = svgEl('svg', { class: 'bd-dock-shape', viewBox: `-1 -1 ${w + 2} ${h + 2}`, width: w + 2, height: h + 2 })
@@ -2971,45 +3479,44 @@ export default {
         if (p.extra) svg.append(svgEl('path', { d: p.extra }))
         return svg
       }
-      // the dock keeps what is used most; every shape of flowcharts is in "All shapes", a panel above it
-      const BASE_SHAPES = ['rect', 'diamond', 'terminator']
-      const dockItem = (id, ico, label, rest) => ({ id, ico, label, ...rest })
+      const dockItem = (id, ico, label, key, rest) => ({ id, ico, label, key, ...rest })
       const shapeItem = (s) => ({ id: 'shape-' + s.id, shape: s.id, label: tt(s.ru, s.en), props: { type: 'shape', shape: s.id } })
-      const DOCK = [
-        dockItem('text', 'card', tt('Карточка', 'Card'), { props: { type: 'text' } }),
-        dockItem('sticky', 'sticky', tt('Стикер', 'Sticky note'), { props: { type: 'sticky', color: STICKY } }),
-        dockItem('todo', 'todo', tt('Чек-лист', 'Check list'), { props: { type: 'todo', text: '[ ] ' } }),
-        dockItem('note', 'note', tt('Заметка из хранилища', 'Note from the vault'), { pick: 'note' }),
-        dockItem('media', 'media', tt('Картинка или файл', 'Picture or file'), { pick: 'file' }),
-        dockItem('frame', 'frame', tt('Рамка', 'Frame'), { props: { type: 'frame', text: '' } }),
-        null,
-        ...SHAPES.filter((s) => BASE_SHAPES.includes(s.id)).map(shapeItem)
+      const BLOCKS = [
+        dockItem('text', 'card', tt('Карточка', 'Card'), 'T', { props: { type: 'text' } }),
+        dockItem('sticky', 'sticky', tt('Стикер', 'Sticky'), 'S', { props: { type: 'sticky', color: STICKY } }),
+        dockItem('todo', 'todo', tt('Чек-лист', 'Checklist'), '', { props: { type: 'todo', text: '[ ] ' }, rare: true }),
+        dockItem('note', 'note', tt('Заметка', 'Note'), 'N', { pick: 'note', long: tt('Заметка из хранилища', 'Note from the vault') }),
+        dockItem('media', 'media', tt('Файл', 'File'), '', { pick: 'file', long: tt('Картинка или файл', 'Picture or file') }),
+        dockItem('frame', 'frame', tt('Рамка', 'Frame'), 'F', { props: { type: 'frame', text: '' }, rare: true })
       ]
+      let lastShape = SHAPES.some((s) => s.id === data().lastShape) ? data().lastShape : 'rect'
       /** What a thing of the dock makes, put with its middle at `at` (null: a free place in the view). */
       const dropDock = (item, at, snap) => {
         if (!board || broken) return
+        if (item.shape && item.shape !== lastShape) {
+          lastShape = item.shape
+          api.data.set({ ...data(), lastShape })
+          syncDock()
+        }
         if (item.pick === 'note') pickNote(at, snap)
         else if (item.pick === 'file') pickFile(at, snap)
+        else if (item.pick === 'link') void askLink(at)
         else addCard({ ...item.props }, at, true, snap)
       }
       const shapesPanel = el('div', { className: 'bd-shapes', hidden: true })
-      const shapesBtn = el('button', { className: 'bd-dock-btn bd-dock-more', title: tt('Все фигуры блок-схем', 'All the flowchart shapes') })
-      shapesBtn.dataset.kind = 'shapes'
-      shapesBtn.append(icon('shapes'), el('span', { className: 'bd-dock-more-label', textContent: tt('Фигуры', 'Shapes') }), icon('chevronUp'))
       const toggleShapes = (open = shapesPanel.hidden) => {
         shapesPanel.hidden = !open
         shapesPanel.classList.remove('dragging')
         shapesBtn.classList.toggle('on', open)
       }
-      shapesBtn.addEventListener('pointerdown', (e) => e.stopPropagation())
-      shapesBtn.addEventListener('click', () => board && !broken && toggleShapes())
       const dockDown = (e, item, b) => {
         if (e.button !== 0 || !board || broken) return
         e.preventDefault()
         e.stopPropagation()
         b.setPointerCapture(e.pointerId)
         const fromPanel = !!b.closest('.bd-shapes')
-        const [w, h] = item.props ? sizeFor(item.props) : item.pick === 'note' ? SIZE.note : SIZE.file
+        const real = item.id === 'shape-last' ? shapeItem(SHAPES.find((s) => s.id === lastShape)) : item
+        const [w, h] = real.props ? sizeFor(real.props) : real.pick === 'note' ? SIZE.note : SIZE.file
         let dragging = false
         const over = (ev) => {
           const r = canvas.getBoundingClientRect()
@@ -3024,9 +3531,9 @@ export default {
             // (the panel of shapes steps out of the way of the field while one of its shapes is carried)
             if (fromPanel) shapesPanel.classList.add('dragging')
             ghost.replaceChildren()
-            ghost.className = 'bd-ghost' + (item.shape ? ' is-shape' : '') + (item.id === 'sticky' ? ' is-sticky' : '')
-            if (item.shape) ghost.append(shapeSvg({ type: 'shape', shape: item.shape, w, h }))
-            else ghost.append(el('span', { textContent: item.label }))
+            ghost.className = 'bd-ghost' + (real.shape ? ' is-shape' : '') + (real.id === 'sticky' ? ' is-sticky' : '')
+            if (real.shape) ghost.append(shapeSvg({ type: 'shape', shape: real.shape, w, h }))
+            else ghost.append(el('span', { textContent: real.long ?? real.label }))
             ghost.hidden = false
             canvas.classList.add('placing')
           }
@@ -3050,29 +3557,71 @@ export default {
           canvas.classList.remove('placing')
           if (fromPanel) toggleShapes(false)
           if (ev.type === 'pointercancel') return
-          if (!dragging) dropDock(item, null, false)
-          else if (over(ev)) dropDock(item, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
+          if (!dragging) dropDock(real, null, false)
+          else if (over(ev)) dropDock(real, toWorld(ev.clientX, ev.clientY), ev.ctrlKey || ev.metaKey)
         }
         b.addEventListener('pointermove', move)
         b.addEventListener('pointerup', up)
         b.addEventListener('pointercancel', up)
       }
-      const dockButton = (item, withLabel = false) => {
-        const b = el('button', { className: 'bd-dock-btn' + (withLabel ? ' bd-shape-row' : ''), title: item.label + tt(' — перетащите на доску или щёлкните', ' — drag it onto the board or click') })
-        b.dataset.kind = item.id
-        b.append(item.shape ? shapeIcon(item.shape) : icon(item.ico))
-        if (withLabel) b.append(el('span', { textContent: item.label }))
+      const tipOf = (item, how = tt('перетащите на доску или щёлкните', 'drag it onto the board or click')) => `${item.long ?? item.label}${item.key ? ` (${item.key})` : ''} — ${how}`
+      /** A button of the dock: its icon with its name under it (the names go when the dock is narrow). */
+      const toolButton = (kind, ico, label, tip) => {
+        const b = el('button', { className: 'bd-dock-btn', title: tip })
+        b.dataset.kind = kind
+        b.append(typeof ico === 'string' ? icon(ico) : ico, el('span', { className: 'bd-dock-label', textContent: label }))
+        return b
+      }
+      const blockButton = (item) => {
+        const b = toolButton(item.id, item.shape ? shapeIcon(item.shape) : item.ico, item.label, tipOf(item))
+        if (item.rare) b.classList.add('bd-rare')
         b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
         return b
       }
-      for (const item of DOCK) dock.append(item ? dockButton(item) : el('span', { className: 'bd-dock-sep' }))
-      dock.append(shapesBtn)
+      const rowButton = (item) => {
+        const b = el('button', { className: 'bd-dock-btn bd-shape-row', title: tipOf(item) })
+        b.dataset.kind = item.id
+        b.append(item.shape ? shapeIcon(item.shape) : icon(item.ico), el('span', { textContent: item.long ?? item.label }))
+        b.addEventListener('pointerdown', (e) => dockDown(e, item, b))
+        return b
+      }
+      const modeButton = (t, ico, label, key, tip) => {
+        const b = toolButton('tool-' + t, ico, label, `${tip} (${key})`)
+        b.classList.add('bd-mode')
+        b.addEventListener('pointerdown', (e) => e.stopPropagation())
+        b.onclick = () => board && !broken && setTool(tool === t && t !== 'select' ? 'select' : t)
+        return b
+      }
+      const selectTool = modeButton('select', 'pointer', tt('Выбор', 'Select'), 'V', tt('Выбор: выделять и двигать блоки', 'Select: choose and move blocks'))
+      const handTool = modeButton('hand', 'hand', tt('Рука', 'Hand'), 'H', tt('Рука: двигать поле (или пробел + перетаскивание)', 'Hand: move the field (or Space + drag)'))
+      const arrowTool = modeButton('arrow', 'arrow', tt('Стрелка', 'Arrow'), 'A', tt('Стрелка: потяните от блока к блоку', 'Arrow: drag from one block to another'))
+      const lastItem = { id: 'shape-last', label: tt('Фигура', 'Shape') }
+      const shapeMain = toolButton('shape-last', shapeIcon(lastShape), tt('Фигура', 'Shape'), '')
+      shapeMain.addEventListener('pointerdown', (e) => dockDown(e, lastItem, shapeMain))
+      const shapesBtn = el('button', { className: 'bd-dock-btn bd-dock-more', title: tt('Все фигуры блок-схем', 'All the flowchart shapes') }, [icon('chevronUp')])
+      shapesBtn.dataset.kind = 'shapes'
+      shapesBtn.addEventListener('pointerdown', (e) => e.stopPropagation())
+      shapesBtn.addEventListener('click', () => board && !broken && toggleShapes())
+      const sep = () => el('span', { className: 'bd-dock-sep' })
+      dock.append(selectTool, handTool, sep(), ...BLOCKS.map(blockButton), sep(), el('span', { className: 'bd-dock-pair' }, [shapeMain, shapesBtn]), sep(), arrowTool)
+      /** The dock shows the mode in use and the last shape. */
+      const syncDock = () => {
+        for (const [t, b] of [['select', selectTool], ['hand', handTool], ['arrow', arrowTool]]) b.classList.toggle('on', tool === t)
+        const s = SHAPES.find((x) => x.id === lastShape)
+        shapeMain.title = tipOf({ label: tt(s.ru, s.en) }) + tt('. Другие фигуры — стрелка рядом', '. Other shapes: the arrow next to it')
+        shapeMain.firstChild.replaceWith(shapeIcon(lastShape))
+      }
       shapesPanel.append(
         el('div', { className: 'bd-shapes-head', textContent: tt('Фигуры блок-схем — перетащите на доску или щёлкните', 'Flowchart shapes — drag one onto the board or click it') }),
-        el('div', { className: 'bd-shapes-grid' }, SHAPES.map((s) => dockButton(shapeItem(s), true)))
+        el('div', { className: 'bd-shapes-grid' }, SHAPES.map((s) => rowButton(shapeItem(s)))),
+        el('div', { className: 'bd-shapes-head bd-shapes-more', textContent: tt('Ещё блоки', 'More blocks') }),
+        el('div', { className: 'bd-shapes-grid' }, [
+          ...BLOCKS.filter((b) => b.rare).map(rowButton),
+          rowButton(dockItem('link', 'link', tt('Ссылка', 'Link'), '', { pick: 'link', long: tt('Ссылка на сайт', 'A web link') }))
+        ])
       )
       canvas.append(shapesPanel)
-      // (a wheel over the dock scrolls it sideways when it does not fit, never zooms the board)
+      // (a wheel over the dock never moves the board; it scrolls the dock sideways when it does not fit)
       for (const box of [dock, shapesPanel]) box.addEventListener('wheel', (e) => e.stopPropagation())
       dock.addEventListener('wheel', (e) => {
         if (dock.scrollWidth > dock.clientWidth) {
@@ -3080,9 +3629,27 @@ export default {
           dock.scrollLeft += e.deltaY || e.deltaX
         }
       })
+      // the dock gets narrower with the field: first the names go, then the rare blocks (they are in the panel too)
+      const fitDock = () => {
+        const w = canvas.clientWidth
+        canvas.classList.toggle('bd-compact', w < 980)
+        canvas.classList.toggle('bd-tiny', w < 700)
+        // (the panel over the chosen block and the map follow the new size of the field)
+        if (board) applyView()
+      }
+      const resizeWatch = new ResizeObserver(fitDock)
+      resizeWatch.observe(canvas)
 
       /* ---------- the title: the name of the board, edited in place ---------- */
       const title = el('input', { className: 'bd-title', spellcheck: false, title: tt('Название доски (щёлкните, чтобы переименовать)', 'Name of the board (click to rename)') })
+      // a quiet "Saved" by the name for a moment after each write
+      const savedMark = el('span', { className: 'bd-saved', textContent: tt('Сохранено', 'Saved') })
+      let savedTimer = null
+      const flashSaved = () => {
+        savedMark.classList.add('on')
+        clearTimeout(savedTimer)
+        savedTimer = setTimeout(() => savedMark.classList.remove('on'), 1600)
+      }
       const defaultName = () => tt('Без названия', 'Untitled')
       let draftName = ''
       const showTitle = () => {
@@ -3119,7 +3686,7 @@ export default {
           const views = { ...(d.views ?? {}) }
           if (views[was]) views[next] = views[was]
           delete views[was]
-          api.data.set({ ...d, last: next, views })
+          api.data.set({ ...d, last: next, views, hintsDone: movedHints(d, was, next) })
           await new Promise((r) => setTimeout(r, 300))
           fillSelect()
           select.value = next
@@ -3156,6 +3723,7 @@ export default {
             await api.vault.write(next, text, true)
             path = next
             draftName = ''
+            syncHint()
             const d = data()
             api.data.set({ ...d, last: next, views: { ...(d.views ?? {}), [next]: { ...board.view } } })
             showTitle()
@@ -3167,28 +3735,20 @@ export default {
           }
         })())
 
-      /* ---------- the toolbar ---------- */
-      const undoBtn = btn('undo', undo, tt('Отменить (Ctrl+Z)', 'Undo (Ctrl+Z)'), 'bd-icon')
-      const redoBtn = btn('redo', redo, tt('Повторить (Ctrl+Y)', 'Redo (Ctrl+Y)'), 'bd-icon')
-      const handBtn = btn('hand', () => setTool(tool === 'hand' ? 'select' : 'hand'), tt('Рука: двигать поле (H)', 'Hand: move the field (H)'), 'bd-icon')
-      const addBtn = btn('+ ' + tt('Добавить', 'Add'), (e) => board && !broken && menuAtButton(e, addItems(null)))
+      /* ---------- the toolbar: the board and the view only ---------- */
       const moreBtn = btn('more', (e) => menuAtButton(e, boardMenu()), tt('Меню доски', 'Board menu'), 'bd-icon')
-      const viewBtn = btn(tt('Вид', 'View'), (e) => board && menuAtButton(e, viewMenu()))
+      const viewBtn = btn(tt('Вид', 'View'), (e) => board && menuAtButton(e, viewMenu()), tt('Сетка, прилипание, колесо мыши, мини-карта', 'Grid, snapping, the mouse wheel, the minimap'), 'bd-view-btn')
+      viewBtn.append(icon('chevron'))
       const findBtn = btn('search', () => board && openSearch(), tt('Найти на доске (Ctrl+F)', 'Find on the board (Ctrl+F)'), 'bd-icon')
       const syncToolbar = () => {
         undoBtn.disabled = hist.i <= 0
         redoBtn.disabled = hist.i >= hist.stack.length - 1
-        handBtn.classList.toggle('on', tool === 'hand')
-        for (const b of [addBtn, viewBtn, findBtn, handBtn]) b.disabled = !board || broken
+        for (const b of [viewBtn, findBtn]) b.disabled = !board || broken
         title.disabled = !board
+        syncDock()
       }
       select.onchange = () => void openPath(select.value)
-      select.addEventListener('contextmenu', (e) => {
-        e.preventDefault()
-        showMenu(e.clientX, e.clientY, boardMenu())
-      })
-      select.title = tt('Другие доски', 'Other boards')
-      toolbar.append(title, selectWrap, moreBtn, el('span', { className: 'bd-sep' }), addBtn, handBtn, undoBtn, redoBtn, el('span', { className: 'bd-grow' }), findBtn, viewBtn)
+      toolbar.append(title, selectWrap, select, savedMark, moreBtn, el('span', { className: 'bd-grow' }), findBtn, viewBtn)
 
       /* ---------- the controller the rest of the add-on talks to ---------- */
       let knownNotes = api.vault.list().join('\n')
@@ -3247,7 +3807,7 @@ export default {
           const views = { ...(d.views ?? {}) }
           if (views[was]) views[next] = views[was]
           delete views[was]
-          api.data.set({ ...d, views, last: d.last === was ? next : d.last })
+          api.data.set({ ...d, views, last: d.last === was ? next : d.last, hintsDone: movedHints(d, was, next) })
           // (the tree is read again a moment later: the list of boards follows then)
           setTimeout(() => {
             fillSelect()
@@ -3274,6 +3834,7 @@ export default {
 
       return () => {
         window.removeEventListener('resize', onResize)
+        resizeWatch.disconnect()
         clearTimeout(keyTimer)
         cancelAnimationFrame(miniFrame)
         void write()
@@ -3383,6 +3944,9 @@ export default {
       .bd-arrow-head { fill: context-stroke; }
       .bd-hit { stroke: transparent; stroke-width: 16; fill: none; pointer-events: stroke; cursor: pointer; }
       .bd-link.on .bd-line { stroke: var(--accent); }
+      /* (a label is taken by the mouse and dragged, as in draw.io) */
+      .bd-links .bd-label { pointer-events: all; cursor: move; }
+      .bd-link.on .bd-label { fill: var(--accent); }
       .bd-label { fill: var(--text); font-size: 13px; paint-order: stroke; stroke: var(--bg-app); stroke-width: 6px; stroke-linejoin: round; pointer-events: none; }
       .bd-temp { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
       .bd-guide { stroke: #f06ac0; stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -3471,7 +4035,7 @@ export default {
       .bd-dock-btn.bd-dock-more.on .bd-ico:last-child { transform: rotate(180deg); }
       @media (max-width: 1000px) { .bd-dock-more-label { display: none; } }
       @media (max-width: 900px) { .bd-dock { max-width: calc(100% - 140px); } }
-      .bd-shapes { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%); z-index: 8; box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 90px); overflow-y: auto;
+      .bd-shapes { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); z-index: 12; box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 90px); overflow-y: auto;
         padding: 10px; border-radius: 12px; background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 10px 30px rgb(0 0 0 / .35); }
       .bd-shapes.dragging { opacity: 0; pointer-events: none; }
       .bd-shapes-head { color: var(--text-3); font-size: 12px; padding: 0 4px 8px; }
@@ -3539,6 +4103,133 @@ export default {
       .bd-found-row:hover { background: var(--bg-hover); color: var(--text); }
       .bd-found-none { padding: 8px 10px; color: var(--text-3); font-size: 13px; }
       .bd-found-disk { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; color: var(--accent); }
+
+      /* ---- 1.5: the layout of the field (the board above, the tools below, the history and the zoom at the left, the map at the right) ---- */
+      .bd-toolbar { gap: 6px; }
+      /* (the title is as wide as the name, so that its arrow and the menu stay by it) */
+      .bd-title { field-sizing: content; width: auto; min-width: 72px; max-width: 320px; }
+      .bd-boards { width: 26px; height: 30px; margin-left: -4px; border-radius: 7px; color: var(--text-3); display: flex; align-items: center; justify-content: center; }
+      .bd-boards:hover { background: var(--bg-hover); color: var(--text); }
+      .bd-boards .bd-ico { width: 14px; height: 14px; }
+      .bd-saved { font-size: 12px; color: var(--text-3); opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap; }
+      .bd-saved.on { opacity: 1; transition: none; }
+      .bd-view-btn { display: inline-flex; align-items: center; gap: 4px; }
+      .bd-view-btn .bd-ico { width: 13px; height: 13px; margin: 0; color: var(--text-3); }
+
+      .bd-zoombox { gap: 0; padding: 0 2px; }
+      .bd-zoombox button { color: var(--text); }
+      .bd-zoombox button:disabled { opacity: .35; pointer-events: none; }
+      .bd-zoombox .bd-ico { width: 16px; height: 16px; }
+      .bd-zoom-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); }
+      .bd-minibox { position: absolute; right: 12px; bottom: 12px; z-index: 6; }
+      .bd-minibox .bd-mini { position: static; display: block; }
+      .bd-minibox.fits:not(.folded) { display: none; }
+      .bd-mini-fold { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 6px; color: var(--text-3); background: var(--float-bg); opacity: 0; display: flex; align-items: center; justify-content: center; }
+      .bd-minibox:hover .bd-mini-fold { opacity: 1; }
+      .bd-mini-fold:hover { color: var(--text); background: var(--bg-hover); }
+      .bd-mini-fold .bd-ico { width: 14px; height: 14px; }
+      .bd-mini-open { display: none; width: 34px; height: 34px; border-radius: 9px; background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); align-items: center; justify-content: center; }
+      .bd-mini-open:hover { background: var(--bg-hover); }
+      .bd-minibox.folded .bd-mini, .bd-minibox.folded .bd-mini-fold { display: none; }
+      .bd-minibox.folded .bd-mini-open { display: flex; }
+
+      .bd-dock { gap: 1px; padding: 4px; max-width: calc(100% - 470px); }
+      .bd-dock-btn { width: auto; min-width: 44px; height: 44px; padding: 0 5px; flex-direction: column; gap: 2px; color: var(--text); cursor: grab; }
+      .bd-dock-btn .bd-ico { width: 18px; height: 18px; margin: 0; }
+      .bd-dock-btn .bd-dock-shape { height: 18px; width: auto; }
+      .bd-dock-label { font-size: 10px; line-height: 1; color: var(--text-2); white-space: nowrap; }
+      .bd-dock-btn:hover .bd-dock-label { color: var(--text); }
+      .bd-dock-btn.bd-mode { cursor: pointer; }
+      .bd-dock-btn.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+      .bd-dock-btn.on .bd-dock-label { color: var(--accent); }
+      .bd-dock-pair { display: flex; align-items: stretch; }
+      .bd-dock-btn.bd-dock-more { min-width: 20px; width: 20px; padding: 0; margin: 0; cursor: pointer; }
+      .bd-dock-btn.bd-dock-more .bd-ico { width: 14px; height: 14px; color: var(--text-2); }
+      .bd-dock-btn.bd-dock-more.on { background: var(--bg-hover); }
+      .bd-dock-sep { height: 30px; margin: 0 3px; }
+      .bd-shapes-more { padding-top: 10px; }
+      .bd-shapes .bd-dock-btn.bd-shape-row { flex-direction: row; height: 36px; min-width: 0; padding: 0 10px; }
+      .bd-shapes .bd-dock-btn.bd-shape-row .bd-ico { width: 18px; height: 18px; }
+      /* narrower: the names go; narrower still: the rare blocks go (they are in the panel of shapes), the dock goes up */
+      .bd-canvas.bd-compact .bd-dock-label { display: none; }
+      .bd-canvas.bd-compact .bd-dock-btn { height: 36px; min-width: 36px; }
+      .bd-canvas.bd-compact .bd-dock-btn.bd-dock-more { min-width: 18px; width: 18px; }
+      .bd-canvas.bd-compact .bd-dock { max-width: calc(100% - 420px); }
+      .bd-canvas.bd-tiny .bd-dock .bd-rare { display: none; }
+      .bd-canvas.bd-tiny .bd-dock { bottom: 56px; max-width: calc(100% - 20px); }
+      .bd-canvas.bd-tiny .bd-shapes { bottom: 104px; }
+      .bd-canvas.bd-tiny .bd-minibox:not(.folded) .bd-mini { width: 132px; height: 88px; }
+      .bd-canvas.arrow-tool, .bd-canvas.arrow-tool .bd-card { cursor: crosshair; }
+      .bd-card.target { box-shadow: 0 0 0 2px var(--accent), 0 2px 8px rgb(0 0 0 / .2); }
+      .bd-card.t-shape.target { box-shadow: none; }
+      .bd-card.t-shape.target .bd-shape-fill { stroke: var(--accent); }
+      .bd-canvas.dropping { box-shadow: inset 0 0 0 2px var(--accent); }
+
+      /* the panel of what is chosen */
+      .bd-float { gap: 1px; padding: 3px; border-radius: 9px; }
+      .bd-fbtn { width: 28px; min-width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+      .bd-fbtn .bd-ico { width: 16px; height: 16px; }
+      .bd-fbtn.off { opacity: .35; }
+      .bd-fsep { width: 1px; height: 18px; margin: 0 3px; background: var(--border); }
+      .bd-label-edit { position: absolute; z-index: 11; transform: translate(-50%, -50%); min-width: 120px; height: 28px; box-sizing: border-box; padding: 0 8px; border-radius: 7px;
+        border: 1px solid var(--accent); background: var(--bg-app); color: var(--text); font: inherit; font-size: 13px; text-align: center; outline: none; }
+
+      /* the empty board */
+      .bd-hint { padding: 18px 22px; color: var(--text-2); background: var(--float-bg); border: 1px solid var(--border-2); box-shadow: 0 8px 24px rgb(0 0 0 / .18); white-space: normal; line-height: 1.4; }
+      .bd-hint-line { margin-bottom: 14px; }
+      .bd-hint-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+      .bd-hint-btn { pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 132px; padding: 14px 8px; border-radius: 10px; border: 1px solid var(--border-2); color: var(--text); font-size: 13px; background: var(--bg-app); }
+      .bd-hint-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-app)); }
+      .bd-hint-btn .bd-ico { width: 24px; height: 24px; margin: 0; }
+      .bd-canvas.bd-tiny .bd-hint-btn { width: 100px; padding: 10px 6px; }
+
+      /* the keys */
+      .bd-keys { padding: 16px 18px; max-width: min(720px, calc(100vw - 40px)); }
+      .bd-keys-title { font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 12px; }
+      .bd-keys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px 24px; }
+      .bd-keys-head { color: var(--text-3); font-size: 12px; margin-bottom: 6px; }
+      .bd-keys-row { display: flex; align-items: baseline; gap: 10px; font-size: 13px; color: var(--text-2); padding: 2px 0; }
+      .bd-keys-row kbd { flex: none; min-width: 64px; font: inherit; font-size: 12px; color: var(--text); background: var(--bg-hover); border-radius: 5px; padding: 1px 6px; }
+      .bd-keys-foot { margin-top: 12px; color: var(--text-3); font-size: 12px; }
+
+      /* the text of cards, formatted */
+      .bd-md > div { min-height: 1.45em; }
+      .bd-md strong { font-weight: 600; }
+      .bd-md code { font-family: var(--font-mono, monospace); font-size: .9em; background: color-mix(in srgb, var(--text) 10%, transparent); border-radius: 4px; padding: 0 3px; }
+      .bd-md mark { background: color-mix(in srgb, #fdd663 55%, transparent); color: inherit; border-radius: 3px; }
+      .bd-md .bd-md-h { font-weight: 600; }
+      .bd-md .bd-md-h1 { font-size: 1.35em; }
+      .bd-md .bd-md-h2 { font-size: 1.18em; }
+      .bd-md .bd-md-li { display: flex; gap: 6px; }
+      .bd-md .bd-md-dot { flex: none; color: var(--text-3); min-width: .8em; }
+      .bd-md .bd-md-task.done span:last-child { color: var(--text-3); text-decoration: line-through; }
+      .bd-md .bd-md-quote { border-left: 3px solid var(--border-2); padding-left: 8px; color: var(--text-2); }
+      .bd-md .bd-md-gap { min-height: .6em; }
+      .bd-card a { color: var(--accent); text-decoration: none; cursor: pointer; }
+      .bd-card a:hover { text-decoration: underline; }
+      .bd-card a.gone { color: var(--text-3); text-decoration: line-through; }
+      .t-sticky .bd-md .bd-md-dot, .t-sticky .bd-md .bd-md-quote { color: #3a3d44; }
+      .t-sticky a { color: #1d4ea8; }
+      .bd-open { width: auto; height: 24px; padding: 0 8px; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; font-size: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+      .bd-open .bd-ico { width: 13px; height: 13px; margin: 0; }
+      .bd-open:hover { color: var(--text); background: var(--bg-hover); }
+
+      /* eight handles of the size */
+      .bd-grip { background: none; opacity: 1; }
+      .bd-rs { position: absolute; z-index: 2; }
+      .bd-rs-n, .bd-rs-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
+      .bd-rs-n { top: -4px; } .bd-rs-s { bottom: -4px; }
+      .bd-rs-e, .bd-rs-w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+      .bd-rs-e { right: -4px; } .bd-rs-w { left: -4px; }
+      .bd-rs-nw, .bd-rs-ne, .bd-rs-sw, .bd-rs-se { width: 10px; height: 10px; box-sizing: border-box; border-radius: 2px; background: var(--bg-app); border: 1.5px solid var(--accent); opacity: 0; }
+      .bd-rs-nw { left: -5px; top: -5px; cursor: nwse-resize; } .bd-rs-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+      .bd-rs-ne { right: -5px; top: -5px; cursor: nesw-resize; } .bd-rs-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+      .bd-card.on > .bd-rs { opacity: 1; }
+      .bd-card:not(.on) > .bd-rs:not(.bd-rs-se) { pointer-events: none; }
+      .bd-card:hover > .bd-rs-se { opacity: .6; }
+      .bd-card.locked > .bd-rs { display: none; }
+      .bd-port { z-index: 3; }
+      .t-frame .bd-rs { pointer-events: auto; }
     `)
   }
 }
