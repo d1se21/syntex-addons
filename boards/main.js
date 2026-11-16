@@ -1876,10 +1876,16 @@ export default {
           const dots = !grid && snapOn() && !(ev.altKey && !startAlt)
           let lines = []
           if (dots) {
+            // near the edge or the middle of another block the block holds on to it (a guide line shows), on that
+            // side only; elsewhere its corner goes onto a dot of the grid
+            const held = snapMove(box, dx, dy, new Set(moving.map((c) => c.id)), false)
+            const byX = held.lines.some((l) => l.v)
+            const byY = held.lines.some((l) => !l.v)
+            lines = held.lines
             for (const c of moving) {
               const o = origin.get(c.id)
-              c.x = Math.round((o.x + dx) / GRID) * GRID
-              c.y = Math.round((o.y + dy) / GRID) * GRID
+              c.x = byX ? Math.round(o.x + held.dx) : Math.round((o.x + dx) / GRID) * GRID
+              c.y = byY ? Math.round(o.y + held.dy) : Math.round((o.y + dy) / GRID) * GRID
               if (sizeOf(c).w !== o.w || sizeOf(c).h !== o.h) {
                 c.w = o.w
                 c.h = o.h
@@ -4261,11 +4267,13 @@ export default {
       .bd-edit { width: 100%; height: 100%; resize: none; border: 0; outline: none; background: transparent; color: inherit; font: inherit; line-height: 1.45; user-select: text; padding: 0; }
       .bd-edit-title { height: auto; font-size: 14px; font-weight: 500; background: var(--bg-app); border: 1px solid var(--accent); border-radius: 6px; padding: 2px 6px; position: relative; }
       .t-sticky .bd-edit { color: #1e2127; }
-      .bd-port { position: absolute; width: calc(14px * var(--ik, 1)); height: calc(14px * var(--ik, 1)); border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; }
-      .bd-port.p-r { right: calc(-8px * var(--ik, 1)); top: 50%; margin-top: calc(-7px * var(--ik, 1)); } .bd-port.p-l { left: calc(-8px * var(--ik, 1)); top: 50%; margin-top: calc(-7px * var(--ik, 1)); }
-      .bd-port.p-t { top: calc(-8px * var(--ik, 1)); left: 50%; margin-left: calc(-7px * var(--ik, 1)); } .bd-port.p-b { bottom: calc(-8px * var(--ik, 1)); left: 50%; margin-left: calc(-7px * var(--ik, 1)); }
+      /* (a whole size, made as small on the screen at any zoom by a transform: a size of 14px / zoom would be rounded to
+         whole pixels inside the zoomed board, its width and its height apart, and a dot would come out an oval) */
+      .bd-port { position: absolute; box-sizing: border-box; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); opacity: 0; cursor: crosshair; border: 2px solid var(--bg-app); z-index: 2; transform: scale(var(--ik, 1)); }
+      .bd-port.p-r { right: -9px; top: 50%; margin-top: -9px; } .bd-port.p-l { left: -9px; top: 50%; margin-top: -9px; }
+      .bd-port.p-t { top: -9px; left: 50%; margin-left: -9px; } .bd-port.p-b { bottom: -9px; left: 50%; margin-left: -9px; }
       /* (an unseen ring around a dot that takes the mouse) */
-      .bd-port::after { content: ''; position: absolute; inset: calc(-7px * var(--ik, 1)); border-radius: 50%; }
+      .bd-port::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; }
       .bd-card:hover .bd-port, .bd-card.on .bd-port, .bd-card.target .bd-port { opacity: 1; }
       .bd-card.target .bd-port { background: var(--text-3); }
       .bd-card.target.s-top .p-t, .bd-card.target.s-right .p-r, .bd-card.target.s-bottom .p-b, .bd-card.target.s-left .p-l { background: var(--accent); transform: scale(1.35); }
@@ -4477,10 +4485,12 @@ export default {
       .bd-rs-n { top: calc(-5px * var(--ik, 1)); } .bd-rs-s { bottom: calc(-5px * var(--ik, 1)); }
       .bd-rs-e, .bd-rs-w { top: calc(12px * var(--ik, 1)); bottom: calc(12px * var(--ik, 1)); width: calc(10px * var(--ik, 1)); cursor: ew-resize; }
       .bd-rs-e { right: calc(-5px * var(--ik, 1)); } .bd-rs-w { left: calc(-5px * var(--ik, 1)); }
-      .bd-rs-nw, .bd-rs-ne, .bd-rs-sw, .bd-rs-se { width: calc(10px * var(--ik, 1)); height: calc(10px * var(--ik, 1)); box-sizing: border-box; border-radius: calc(2px * var(--ik, 1)); background: var(--bg-app); border: calc(1.5px * var(--ik, 1)) solid var(--accent); opacity: 0; }
-      .bd-rs-nw::after, .bd-rs-ne::after, .bd-rs-sw::after, .bd-rs-se::after { content: ''; position: absolute; inset: calc(-9px * var(--ik, 1)); }
-      .bd-rs-nw { left: calc(-5px * var(--ik, 1)); top: calc(-5px * var(--ik, 1)); cursor: nwse-resize; } .bd-rs-se { right: calc(-5px * var(--ik, 1)); bottom: calc(-5px * var(--ik, 1)); cursor: nwse-resize; }
-      .bd-rs-ne { right: calc(-5px * var(--ik, 1)); top: calc(-5px * var(--ik, 1)); cursor: nesw-resize; } .bd-rs-sw { left: calc(-5px * var(--ik, 1)); bottom: calc(-5px * var(--ik, 1)); cursor: nesw-resize; }
+      /* (the corners: whole squares made small by a transform, as the dots above; the frame is a shadow, not a border,
+         which the browser would round down to a whole pixel) */
+      .bd-rs-nw, .bd-rs-ne, .bd-rs-sw, .bd-rs-se { width: 10px; height: 10px; box-sizing: border-box; border-radius: 2px; background: var(--bg-app); box-shadow: inset 0 0 0 1.5px var(--accent); opacity: 0; transform: scale(var(--ik, 1)); }
+      .bd-rs-nw::after, .bd-rs-ne::after, .bd-rs-sw::after, .bd-rs-se::after { content: ''; position: absolute; inset: -9px; }
+      .bd-rs-nw { left: -5px; top: -5px; cursor: nwse-resize; } .bd-rs-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+      .bd-rs-ne { right: -5px; top: -5px; cursor: nesw-resize; } .bd-rs-sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
       .bd-card.on > .bd-rs { opacity: 1; }
       .bd-card:not(.on) > .bd-rs:not(.bd-rs-se) { pointer-events: none; }
       .bd-card:hover > .bd-rs-se { opacity: .6; }
