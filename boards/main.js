@@ -486,6 +486,9 @@ export default {
       const toolbar = el('div', { className: 'bd-toolbar' })
       const canvas = el('div', { className: 'bd-canvas', tabIndex: 0 })
       const world = el('div', { className: 'bd-world' })
+      // the grid is drawn here, each dot (each line) on whole pixels of the screen: a background of cells of 24px times
+      // the zoom is tiled by the browser at fractional sizes, and its dots came out of one or of two pixels
+      const gridLayer = el('canvas', { className: 'bd-gridc' })
       const frameLayer = el('div', { className: 'bd-layer' })
       const cardLayer = el('div', { className: 'bd-layer' })
       const links = svgEl('svg', { class: 'bd-links', width: 1, height: 1 })
@@ -572,7 +575,7 @@ export default {
       searchBox.append(searchInput, searchCount, el('button', { textContent: '×', onclick: () => closeSearch() }))
       const dock = el('div', { className: 'bd-dock' })
       const ghost = el('div', { className: 'bd-ghost', hidden: true })
-      canvas.append(world, band, hint, floatBar, zoomBox, miniBox, searchBox, dock, ghost)
+      canvas.append(gridLayer, world, band, hint, floatBar, zoomBox, miniBox, searchBox, dock, ghost)
       root.append(toolbar, canvas)
       canvas.dataset.dropFiles = ''
 
@@ -675,21 +678,56 @@ export default {
         // (the handles of the cards and the line of an arrow keep their size on the screen at any zoom: see --ik)
         world.style.setProperty('--ik', String(1 / k))
         canvas.dataset.grid = board.settings.grid
-        // the grid follows the zoom: when the cells get too small on the screen, every next
-        // step takes twice as many of them, so far away there is no dense mesh
-        let step = GRID * k
-        while (step < 14) step *= 2
-        canvas.style.backgroundSize = `${step}px ${step}px`
-        // (a dot is drawn in the middle of its cell: the cells are moved by half a cell so that the dots are where
-        // the corners of cards snap to, on whole steps of the grid)
-        const half = board.settings.grid === 'dots' ? step / 2 : 0
-        canvas.style.backgroundPosition = `${x - half}px ${y - half}px`
+        drawGrid()
         zoomLabel.textContent = Math.round(k * 100) + '%'
         miniBox.hidden = board.settings.minimap === false
         if (selLink) drawLinks()
         placeFloat()
         drawMini()
       }
+      /**
+       * The grid of the field: dots (or lines) where the corners of cards snap to, on whole steps of the grid. It follows
+       * the zoom: when the cells get too small on the screen, every next step takes twice as many of them, so far away
+       * there is no dense mesh. Every dot is put on a whole pixel and drawn the same: one size at any zoom.
+       */
+      const drawGrid = () => {
+        if (!board) return
+        const dpr = window.devicePixelRatio || 1
+        const W = canvas.clientWidth
+        const H = canvas.clientHeight
+        if (gridLayer.width !== Math.round(W * dpr) || gridLayer.height !== Math.round(H * dpr)) {
+          gridLayer.width = Math.round(W * dpr)
+          gridLayer.height = Math.round(H * dpr)
+        }
+        const ctx = gridLayer.getContext('2d')
+        ctx.clearRect(0, 0, gridLayer.width, gridLayer.height)
+        const kind = board.settings.grid
+        if (kind !== 'dots' && kind !== 'lines') return
+        const { x, y, k } = board.view
+        let step = GRID * k
+        while (step < 14) step *= 2
+        const css = getComputedStyle(canvas)
+        const first = (o) => ((o % step) + step) % step
+        if (kind === 'dots') {
+          ctx.fillStyle = css.getPropertyValue('--border-2').trim() || '#555'
+          // (a square of whole pixels, two across at the usual zoom of the screen: as bright as the dots were, sharp,
+          // the same everywhere; a smoothed circle of less than two pixels came out dim)
+          const d = Math.max(2, Math.round(2 * dpr))
+          const h = Math.floor(d / 2)
+          for (let px = first(x); px < W + step; px += step) {
+            const cx = Math.round(px * dpr) - h
+            for (let py = first(y); py < H + step; py += step) ctx.fillRect(cx, Math.round(py * dpr) - h, d, d)
+          }
+        } else {
+          ctx.fillStyle = css.getPropertyValue('--border').trim() || '#444'
+          const t = Math.max(1, Math.round(dpr))
+          for (let px = first(x); px < W; px += step) ctx.fillRect(Math.round(px * dpr), 0, t, gridLayer.height)
+          for (let py = first(y); py < H; py += step) ctx.fillRect(0, Math.round(py * dpr), gridLayer.width, t)
+        }
+      }
+      // (a theme changed: its colours drawn again)
+      const themeWatch = new MutationObserver(() => drawGrid())
+      themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
       const toWorld = (cx, cy) => {
         const r = canvas.getBoundingClientRect()
         return { x: (cx - r.left - board.view.x) / board.view.k, y: (cy - r.top - board.view.y) / board.view.k }
@@ -3884,6 +3922,8 @@ export default {
       let initDone = null
       const resizeWatch = new ResizeObserver(fitDock)
       resizeWatch.observe(canvas)
+      const gridWatch = new ResizeObserver(() => drawGrid())
+      gridWatch.observe(canvas)
 
       /* ---------- the title: the name of the board, edited in place ---------- */
       const title = el('input', { className: 'bd-title', spellcheck: false, title: tt('Название доски (щёлкните, чтобы переименовать)', 'Name of the board (click to rename)') })
@@ -4086,6 +4126,8 @@ export default {
 
       return () => {
         window.removeEventListener('resize', onResize)
+        gridWatch.disconnect()
+        themeWatch.disconnect()
         window.removeEventListener('blur', releaseSpace)
         resizeWatch.disconnect()
         clearTimeout(keyTimer)
@@ -4187,8 +4229,7 @@ export default {
       .bd-sep { width: 1px; height: 18px; background: var(--border); }
       .bd-grow { flex: 1; }
       .bd-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; outline: none; cursor: default; touch-action: none; user-select: none; }
-      .bd-canvas[data-grid='dots'] { background-image: radial-gradient(circle, var(--border-2) 1px, transparent 1px); }
-      .bd-canvas[data-grid='lines'] { background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); }
+      .bd-gridc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
       .bd-canvas.hand, .bd-canvas.panning { cursor: grab; }
       .bd-canvas.panning { cursor: grabbing; }
       .bd-canvas.arrowing { cursor: crosshair; }
