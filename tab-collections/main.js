@@ -81,6 +81,8 @@ export default {
 
     // tabs held over a collection while being dragged: once dropped, they are put next to it wherever they fell
     const joining = new Set()
+    // tabs brought to the front by a choice since the last update (see api.tabs.onChange below)
+    const chosen = new Set()
 
     // A tab replaced by another one in its very place (a note opened in an empty tab: Syntex puts the note's tab
     // there, then closes the empty one) hands its collection over to the new tab. So each tab is remembered with
@@ -128,9 +130,12 @@ export default {
           return heir ? [heir.id] : []
         })
         // a tab brought to the front opens its folded collection; but not one that came to the front only because the
-        // tab in front was closed (Syntex picks a neighbour then): the collection stays folded, another tab goes in front
-        if (c.folded && c.tabs.some((id) => now.get(id)?.active && !before.get(id)?.active)) {
-          if (closed) awayFrom(c, tabs)
+        // tab in front was closed (Syntex picks a neighbour then): the collection stays folded, another tab goes in front.
+        // A tab chosen while the one in front was still there (a note opened from the recent list of an empty tab,
+        // which closes right after) was asked for: it opens the collection
+        const brought = c.tabs.filter((id) => now.get(id)?.active && !before.get(id)?.active)
+        if (c.folded && brought.length) {
+          if (closed && !brought.some((id) => chosen.has(id))) awayFrom(c, tabs)
           else {
             c.folded = false
             changed = true
@@ -584,10 +589,22 @@ export default {
     // a move of a tab tells of several changes in a row (the tab leaves its place, then comes to the new one): the
     // collections follow the tabs once those have settled, not the step in between, where the tab seems closed
     let pending = null
+    // Each change is looked at as it comes, to tell a tab that was chosen from one Syntex brought to the front: closing
+    // the tab in front, the next one comes forward once the closed one is gone; a chosen one, while the tab that was
+    // in front is still there
+    let fronts = new Map(api.tabs.list().filter((x) => x.active).map((x) => [x.window, x.id]))
     api.tabs.onChange(() => {
+      const tabs = api.tabs.list()
+      const ids = new Set(tabs.map((x) => x.id))
+      for (const x of tabs) {
+        const was = fronts.get(x.window)
+        if (x.active && was && was !== x.id && ids.has(was)) chosen.add(x.id)
+      }
+      fronts = new Map(tabs.filter((x) => x.active).map((x) => [x.window, x.id]))
       if (pending === null) pending = setTimeout(() => {
         pending = null
         update()
+        chosen.clear()
       }, 0)
     })
     api.onDispose(() => pending !== null && clearTimeout(pending))
