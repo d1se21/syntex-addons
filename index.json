@@ -95,29 +95,6 @@
       }
     },
     {
-      "id": "slash-commands",
-      "name": {
-        "ru": "Команды через /",
-        "en": "Slash commands"
-      },
-      "description": {
-        "ru": "«/» в начале строки открывает список того, что можно вставить: заголовки, списки, задачу, цитату, таблицу, код, выноску, разделитель, ссылку, дату и время, а также шаблон, голосовую и ежедневную заметку, если эти аддоны включены. Набор фильтрует, ↑↓ и Enter выбирают.",
-        "en": "\"/\" at the start of a line opens a list of what can be put there: headings, lists, a task, a quote, a table, code, a callout, a divider, a link, the date and time, and a template, a voice note or today's note when those add-ons are on. Typing filters, ↑↓ and Enter choose."
-      },
-      "version": "1.0.3",
-      "author": "Syntex",
-      "minApi": 8,
-      "path": "slash-commands",
-      "files": [
-        "manifest.json",
-        "main.js"
-      ],
-      "hashes": {
-        "manifest.json": "b7e1151e1708ea4e940df1e472232715b58f8909905ce9f9810845a87790ddc0",
-        "main.js": "ba523e6080c169693aafbd6c38cfa1a78c947c60eaa9ebe6b088f629e1e6b3dd"
-      }
-    },
-    {
       "id": "tab-collections",
       "name": {
         "ru": "Коллекции вкладок",
@@ -141,39 +118,16 @@
       }
     },
     {
-      "id": "tags",
-      "name": {
-        "ru": "Теги",
-        "en": "Tags"
-      },
-      "description": {
-        "ru": "#теги в тексте подсвечиваются и нажимаются: клик открывает вкладку «Теги» — все теги хранилища и заметки с выбранным, со строкой, где он стоит. Ctrl+клик ставит курсор в тег.",
-        "en": "#tags in the text are coloured and can be clicked: a click opens the Tags tab, with every tag of the vault and the notes of the chosen one, at the line it stands on. Ctrl+click puts the caret in the tag."
-      },
-      "version": "1.0.2",
-      "author": "Syntex",
-      "minApi": 8,
-      "path": "tags",
-      "files": [
-        "manifest.json",
-        "main.js"
-      ],
-      "hashes": {
-        "manifest.json": "a70211cc5444eb4733dd2d408890b18c7ccd33982234ed2971c22a7dcd8412bf",
-        "main.js": "f9461b1a621e9db7c7858a209d50f8c950a9d6e7cace7de282af6d4cd9aab015"
-      }
-    },
-    {
       "id": "templates",
       "name": {
         "ru": "Шаблоны",
         "en": "Templates"
       },
       "description": {
-        "ru": "Заметки папки «Шаблоны» — шаблоны: «Вставить шаблон» (Ctrl+Alt+T, меню «Вставка») кладёт шаблон на место курсора, «Новая заметка из шаблона» создаёт заметку. {{название}}, {{дата}}, {{время}}, {{день недели}} заполняются сами.",
-        "en": "The notes of the Templates folder are templates: Insert a template (Ctrl+Alt+T, the Insert menu) puts one at the caret, New note from a template makes a note of it. {{title}}, {{date}}, {{time}}, {{weekday}} are filled in."
+        "ru": "Заметки папки «Шаблоны» — шаблоны: «Вставить шаблон» (Ctrl+Alt+Y, меню «Вставка») кладёт шаблон на место курсора, «Новая заметка из шаблона» создаёт заметку. {{название}}, {{дата}}, {{время}}, {{день недели}} заполняются сами.",
+        "en": "The notes of the Templates folder are templates: Insert a template (Ctrl+Alt+Y, the Insert menu) puts one at the caret, New note from a template makes a note of it. {{title}}, {{date}}, {{time}}, {{weekday}} are filled in."
       },
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Syntex",
       "minApi": 7,
       "path": "templates",
@@ -182,8 +136,8 @@
         "main.js"
       ],
       "hashes": {
-        "manifest.json": "aa68a2fd03e33cc372a2d45469b5b7cf41d19e12cbc0d15204697e6366653a1a",
-        "main.js": "0190a7b29ca20ab1c601c0b59faebf58f731a66ffdb9edefa08bef4a3093df1d"
+        "manifest.json": "c2dd48289aac451bf08c726ea6177ea6d7bc69c7167ff5265a2cb3b8b9523fc0",
+        "main.js": "04bbc545b39bdb473af72ae54a7b642c607cd0e19ff09f4d490a495ee6d40ee9"
       }
     },
     {
