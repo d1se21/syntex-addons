@@ -136,7 +136,7 @@ export default {
         }
       })
 
-    api.commands.add({ id: 'insert', name: { ru: 'Вставить шаблон', en: 'Insert a template' }, keys: 'Ctrl+Alt+T', run: insert })
+    api.commands.add({ id: 'insert', name: { ru: 'Вставить шаблон', en: 'Insert a template' }, keys: 'Ctrl+Alt+Y', run: insert }) // (Ctrl+Alt+T is the table of Syntex since 0.1.26)
     api.commands.add({ id: 'new', name: { ru: 'Новая заметка из шаблона', en: 'New note from a template' }, run: () => newFrom('') })
     api.menus.editor('insert', () => [{ label: { ru: 'Шаблон…', en: 'Template…' }, icon: 'file', command: 'insert', action: insert }])
     api.menus.file((path, isFolder) => (isFolder ? [{ label: { ru: 'Новая заметка из шаблона…', en: 'New note from a template…' }, action: () => newFrom(path) }] : []))
